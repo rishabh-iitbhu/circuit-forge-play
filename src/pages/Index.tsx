@@ -1,11 +1,33 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState } from "react";
+import { FabricObject } from "fabric";
+import { Toolbar } from "@/components/Toolbar";
+import { ComponentLibrary } from "@/components/ComponentLibrary";
+import { CircuitCanvas } from "@/components/CircuitCanvas";
+import { PropertiesPanel } from "@/components/PropertiesPanel";
+
+interface ComponentData {
+  isGrid?: boolean;
+  type?: string;
+  value?: string;
+  unit?: string;
+  model?: string;
+}
+
+interface ExtendedFabricObject extends FabricObject {
+  data?: ComponentData;
+}
 
 const Index = () => {
+  const [selectedTool, setSelectedTool] = useState<string | null>(null);
+  const [selectedComponent, setSelectedComponent] = useState<ExtendedFabricObject | null>(null);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
+    <div className="h-screen flex flex-col bg-background text-foreground">
+      <Toolbar />
+      <div className="flex-1 flex overflow-hidden">
+        <ComponentLibrary onSelectTool={setSelectedTool} selectedTool={selectedTool} />
+        <CircuitCanvas onComponentSelect={setSelectedComponent} selectedTool={selectedTool} />
+        <PropertiesPanel selectedComponent={selectedComponent} />
       </div>
     </div>
   );
