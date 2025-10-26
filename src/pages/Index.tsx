@@ -1,33 +1,38 @@
-import { useState } from "react";
-import { FabricObject } from "fabric";
-import { Toolbar } from "@/components/Toolbar";
-import { ComponentLibrary } from "@/components/ComponentLibrary";
-import { CircuitCanvas } from "@/components/CircuitCanvas";
-import { PropertiesPanel } from "@/components/PropertiesPanel";
-
-interface ComponentData {
-  isGrid?: boolean;
-  type?: string;
-  value?: string;
-  unit?: string;
-  model?: string;
-}
-
-interface ExtendedFabricObject extends FabricObject {
-  data?: ComponentData;
-}
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PFCCalculator } from "@/components/PFCCalculator";
+import { BuckCalculator } from "@/components/BuckCalculator";
+import { Zap } from "lucide-react";
 
 const Index = () => {
-  const [selectedTool, setSelectedTool] = useState<string | null>(null);
-  const [selectedComponent, setSelectedComponent] = useState<ExtendedFabricObject | null>(null);
-
   return (
-    <div className="h-screen flex flex-col bg-background text-foreground">
-      <Toolbar />
-      <div className="flex-1 flex overflow-hidden">
-        <ComponentLibrary onSelectTool={setSelectedTool} selectedTool={selectedTool} />
-        <CircuitCanvas onComponentSelect={setSelectedComponent} selectedTool={selectedTool} />
-        <PropertiesPanel selectedComponent={selectedComponent} />
+    <div className="min-h-screen bg-background p-6">
+      <div className="max-w-7xl mx-auto">
+        <header className="mb-8">
+          <div className="flex items-center gap-3 mb-2">
+            <Zap className="h-10 w-10 text-primary" />
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
+              Circuit Designer Pro
+            </h1>
+          </div>
+          <p className="text-muted-foreground">
+            Design circuits with AI-powered component calculations and grounded theory
+          </p>
+        </header>
+
+        <Tabs defaultValue="pfc" className="w-full">
+          <TabsList className="grid w-full md:w-auto md:inline-grid grid-cols-2 mb-6">
+            <TabsTrigger value="pfc">PFC Circuit</TabsTrigger>
+            <TabsTrigger value="buck">Buck Converter</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="pfc">
+            <PFCCalculator />
+          </TabsContent>
+
+          <TabsContent value="buck">
+            <BuckCalculator />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
