@@ -26,6 +26,9 @@ export const CircuitCanvas = ({ onComponentSelect, selectedTool }: CircuitCanvas
   useEffect(() => {
     if (!canvasRef.current) return;
 
+    // Prevent double initialization in strict mode
+    if (fabricCanvas) return;
+
     const canvas = new FabricCanvas(canvasRef.current, {
       width: window.innerWidth - 400,
       height: window.innerHeight - 80,
@@ -39,13 +42,13 @@ export const CircuitCanvas = ({ onComponentSelect, selectedTool }: CircuitCanvas
 
     canvas.on("selection:created", (e) => {
       if (e.selected && e.selected[0]) {
-        onComponentSelect(e.selected[0]);
+        onComponentSelect(e.selected[0] as ExtendedFabricObject);
       }
     });
 
     canvas.on("selection:updated", (e) => {
       if (e.selected && e.selected[0]) {
-        onComponentSelect(e.selected[0]);
+        onComponentSelect(e.selected[0] as ExtendedFabricObject);
       }
     });
 
