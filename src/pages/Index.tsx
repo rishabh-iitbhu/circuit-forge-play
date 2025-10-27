@@ -1,6 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PFCCalculator } from "@/components/PFCCalculator";
 import { BuckCalculator } from "@/components/BuckCalculator";
+import { ComponentLibrary } from "@/components/ComponentLibrary";
 import { Zap } from "lucide-react";
 
 const Index = () => {
@@ -18,6 +19,10 @@ const Index = () => {
             Design circuits with AI-powered component calculations and grounded theory
           </p>
         </header>
+
+        <div className="mb-8">
+          <ComponentLibrary />
+        </div>
 
         <Tabs defaultValue="pfc" className="w-full">
           <TabsList className="grid w-full md:w-auto md:inline-grid grid-cols-2 mb-6">
