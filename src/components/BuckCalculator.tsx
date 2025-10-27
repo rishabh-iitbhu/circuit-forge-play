@@ -4,8 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { CircuitCalculator, BuckInputs, validateInputs } from "@/lib/calculations";
+import { suggestMOSFETs, suggestCapacitors, suggestInductors } from "@/lib/componentSuggestions";
 import { toast } from "sonner";
-import { Gauge } from "lucide-react";
+import { Gauge, Cpu, Battery, Codesandbox } from "lucide-react";
 
 export const BuckCalculator = () => {
   const [inputs, setInputs] = useState<BuckInputs>({
@@ -50,6 +51,18 @@ export const BuckCalculator = () => {
       toast.error("Calculation error occurred");
     }
   };
+
+  const mosfetSuggestions = results 
+    ? suggestMOSFETs(inputs.v_in_max, inputs.p_out_max / inputs.v_out_min)
+    : [];
+  
+  const outputCapSuggestions = results
+    ? suggestCapacitors(results.output_capacitance * 1e6, inputs.v_out_max)
+    : [];
+  
+  const inductorSuggestions = results
+    ? suggestInductors(results.inductance * 1e6, inputs.p_out_max / inputs.v_out_min)
+    : [];
 
   return (
     <div className="space-y-6">
@@ -223,35 +236,144 @@ export const BuckCalculator = () => {
       </Button>
 
       {results && (
-        <Card className="p-6 bg-gradient-to-br from-accent/5 to-primary/5 border-accent/20">
-          <h3 className="text-xl font-bold mb-4 text-accent">Calculated Values</h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="p-4 bg-card rounded-lg border border-border">
-              <div className="text-sm text-muted-foreground mb-1">Inductance</div>
-              <div className="text-2xl font-bold text-foreground">
-                {(results.inductance * 1e6).toFixed(2)} µH
+        <>
+          <Card className="p-6 bg-gradient-to-br from-accent/5 to-primary/5 border-accent/20">
+            <h3 className="text-xl font-bold mb-4 text-accent">Calculated Values</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="p-4 bg-card rounded-lg border border-border">
+                <div className="text-sm text-muted-foreground mb-1">Inductance</div>
+                <div className="text-2xl font-bold text-foreground">
+                  {(results.inductance * 1e6).toFixed(2)} µH
+                </div>
+              </div>
+              <div className="p-4 bg-card rounded-lg border border-border">
+                <div className="text-sm text-muted-foreground mb-1">Output Capacitance</div>
+                <div className="text-2xl font-bold text-foreground">
+                  {(results.output_capacitance * 1e6).toFixed(2)} µF
+                </div>
+              </div>
+              <div className="p-4 bg-card rounded-lg border border-border">
+                <div className="text-sm text-muted-foreground mb-1">Input Capacitance</div>
+                <div className="text-2xl font-bold text-foreground">
+                  {(results.input_capacitance * 1e6).toFixed(2)} µF
+                </div>
+              </div>
+              <div className="p-4 bg-card rounded-lg border border-border">
+                <div className="text-sm text-muted-foreground mb-1">Max Duty Cycle</div>
+                <div className="text-2xl font-bold text-foreground">
+                  {(results.duty_cycle_max * 100).toFixed(1)}%
+                </div>
               </div>
             </div>
-            <div className="p-4 bg-card rounded-lg border border-border">
-              <div className="text-sm text-muted-foreground mb-1">Output Capacitance</div>
-              <div className="text-2xl font-bold text-foreground">
-                {(results.output_capacitance * 1e6).toFixed(2)} µF
+          </Card>
+
+          <div className="space-y-6">
+            <h3 className="text-xl font-bold text-accent">Recommended Components</h3>
+            
+            <Card className="p-6">
+              <h4 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Cpu className="h-5 w-5 text-accent" />
+                MOSFETs
+              </h4>
+              <div className="space-y-4">
+                {mosfetSuggestions.map((suggestion, idx) => (
+                  <div key={idx} className="border-l-4 border-accent/40 pl-4 py-2">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <div className="font-semibold text-foreground">{idx + 1}. {suggestion.component.name}</div>
+                        <div className="text-sm text-muted-foreground">{suggestion.component.manufacturer}</div>
+                      </div>
+                      <div className="text-xs bg-accent/10 text-accent px-2 py-1 rounded">
+                        {suggestion.component.efficiencyRange}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs mb-2">
+                      <div><span className="text-muted-foreground">VDS:</span> <span className="font-medium">{suggestion.component.vds}V</span></div>
+                      <div><span className="text-muted-foreground">ID:</span> <span className="font-medium">{suggestion.component.id}A</span></div>
+                      <div><span className="text-muted-foreground">RDS(on):</span> <span className="font-medium">{suggestion.component.rdson}mΩ</span></div>
+                      <div><span className="text-muted-foreground">Qg:</span> <span className="font-medium">{suggestion.component.qg}nC</span></div>
+                      <div><span className="text-muted-foreground">Package:</span> <span className="font-medium">{suggestion.component.package}</span></div>
+                    </div>
+                    <div className="text-sm text-muted-foreground italic">
+                      <span className="font-semibold text-foreground">Why: </span>{suggestion.reason}
+                    </div>
+                  </div>
+                ))}
+                {mosfetSuggestions.length === 0 && (
+                  <div className="text-muted-foreground text-sm">No suitable MOSFETs found for these specifications</div>
+                )}
               </div>
-            </div>
-            <div className="p-4 bg-card rounded-lg border border-border">
-              <div className="text-sm text-muted-foreground mb-1">Input Capacitance</div>
-              <div className="text-2xl font-bold text-foreground">
-                {(results.input_capacitance * 1e6).toFixed(2)} µF
+            </Card>
+
+            <Card className="p-6">
+              <h4 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Battery className="h-5 w-5 text-accent" />
+                Output Capacitors
+              </h4>
+              <div className="space-y-4">
+                {outputCapSuggestions.map((suggestion, idx) => (
+                  <div key={idx} className="border-l-4 border-accent/40 pl-4 py-2">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <div className="font-semibold text-foreground">{idx + 1}. {suggestion.component.partNumber}</div>
+                        <div className="text-sm text-muted-foreground">{suggestion.component.manufacturer}</div>
+                      </div>
+                      <div className="text-xs bg-primary/20 text-primary px-2 py-1 rounded">
+                        {suggestion.component.type}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs mb-2">
+                      <div><span className="text-muted-foreground">Capacitance:</span> <span className="font-medium">{suggestion.component.capacitance}µF</span></div>
+                      <div><span className="text-muted-foreground">Voltage:</span> <span className="font-medium">{suggestion.component.voltage}V</span></div>
+                      <div><span className="text-muted-foreground">ESR:</span> <span className="font-medium">{suggestion.component.esr}mΩ</span></div>
+                      <div><span className="text-muted-foreground">Temp:</span> <span className="font-medium">{suggestion.component.tempRange}°C</span></div>
+                    </div>
+                    <div className="text-sm text-muted-foreground italic">
+                      <span className="font-semibold text-foreground">Why: </span>{suggestion.reason}
+                    </div>
+                  </div>
+                ))}
+                {outputCapSuggestions.length === 0 && (
+                  <div className="text-muted-foreground text-sm">No suitable capacitors found for these specifications</div>
+                )}
               </div>
-            </div>
-            <div className="p-4 bg-card rounded-lg border border-border">
-              <div className="text-sm text-muted-foreground mb-1">Max Duty Cycle</div>
-              <div className="text-2xl font-bold text-foreground">
-                {(results.duty_cycle_max * 100).toFixed(1)}%
+            </Card>
+
+            <Card className="p-6">
+              <h4 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Codesandbox className="h-5 w-5 text-accent" />
+                Inductors
+              </h4>
+              <div className="space-y-4">
+                {inductorSuggestions.map((suggestion, idx) => (
+                  <div key={idx} className="border-l-4 border-accent/40 pl-4 py-2">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <div className="font-semibold text-foreground">{idx + 1}. {suggestion.component.partNumber}</div>
+                        <div className="text-sm text-muted-foreground">{suggestion.component.manufacturer}</div>
+                      </div>
+                      <div className="text-xs bg-secondary/80 text-secondary-foreground px-2 py-1 rounded">
+                        {suggestion.component.package}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs mb-2">
+                      <div><span className="text-muted-foreground">Inductance:</span> <span className="font-medium">{suggestion.component.inductance}µH</span></div>
+                      <div><span className="text-muted-foreground">Current:</span> <span className="font-medium">{suggestion.component.current}A</span></div>
+                      <div><span className="text-muted-foreground">DCR:</span> <span className="font-medium">{suggestion.component.dcr}mΩ</span></div>
+                      <div><span className="text-muted-foreground">Isat:</span> <span className="font-medium">{suggestion.component.satCurrent}A</span></div>
+                    </div>
+                    <div className="text-sm text-muted-foreground italic">
+                      <span className="font-semibold text-foreground">Why: </span>{suggestion.reason}
+                    </div>
+                  </div>
+                ))}
+                {inductorSuggestions.length === 0 && (
+                  <div className="text-muted-foreground text-sm">No suitable inductors found for these specifications</div>
+                )}
               </div>
-            </div>
+            </Card>
           </div>
-        </Card>
+        </>
       )}
     </div>
   );
