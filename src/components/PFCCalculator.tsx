@@ -64,6 +64,18 @@ export const PFCCalculator = () => {
     ? suggestInductors(results.inductance * 1e6, results.ripple_current)
     : [];
 
+  // Debug logging
+  if (results) {
+    console.log('=== Component Suggestion Debug ===');
+    console.log('Required Capacitance (µF):', results.capacitance * 1e6);
+    console.log('Max Voltage (V):', inputs.v_out_max);
+    console.log('Required Inductance (µH):', results.inductance * 1e6);
+    console.log('Ripple Current (A):', results.ripple_current);
+    console.log('MOSFET Suggestions:', mosfetSuggestions.length);
+    console.log('Capacitor Suggestions:', capacitorSuggestions.length);
+    console.log('Inductor Suggestions:', inductorSuggestions.length);
+  }
+
   const handleRunSimulation = async () => {
     if (!results || mosfetSuggestions.length === 0 || capacitorSuggestions.length === 0 || inductorSuggestions.length === 0) {
       toast.error("Please calculate component values first and ensure components are suggested");
