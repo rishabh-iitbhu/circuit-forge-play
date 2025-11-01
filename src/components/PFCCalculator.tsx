@@ -7,13 +7,17 @@ import { Button } from "@/components/ui/button";
 import { CircuitCalculator, PFCInputs, validateInputs } from "@/lib/calculations";
 import { suggestMOSFETs, suggestCapacitors, suggestInductors } from "@/lib/componentSuggestions";
 import { toast } from "sonner";
-import { Zap, Cpu, Battery, Codesandbox, Activity, Loader2 } from "lucide-react";
-import { generatePFCNetlist } from "@/lib/netlistGenerator";
-import { SimulationService } from "@/lib/simulationService";
+import { Zap, Cpu, Battery, Codesandbox, Settings } from "lucide-react";
+import SimulationConfig from "@/components/SimulationConfig";
+import SimulationProgress from "@/components/SimulationProgress";
+import { PermutationSimulator } from "@/lib/permutationSimulator";
+import { PermutationConfig } from "@/types/permutation";
 
 export const PFCCalculator = () => {
   const navigate = useNavigate();
   const [isSimulating, setIsSimulating] = useState(false);
+  const [simulationProgress, setSimulationProgress] = useState({ current: 0, total: 0, permutation: '' });
+  const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [inputs, setInputs] = useState<PFCInputs>({
     v_in_min: 100,
     v_in_max: 240,
@@ -76,47 +80,46 @@ export const PFCCalculator = () => {
     console.log('Inductor Suggestions:', inductorSuggestions.length);
   }
 
-  const handleRunSimulation = async () => {
-    if (!results || mosfetSuggestions.length === 0 || capacitorSuggestions.length === 0 || inductorSuggestions.length === 0) {
-      toast.error("Please calculate component values first and ensure components are suggested");
+  const handleRunSimulation = async (config: PermutationConfig) => {
+    if (!results) {
+      toast.error("Please calculate component values first");
       return;
     }
 
     setIsSimulating(true);
+    setSimulationProgress({ current: 0, total: 0, permutation: '' });
 
     try {
-      // Generate netlist with top suggested components
-      const netlist = generatePFCNetlist(
+      const simulator = new PermutationSimulator();
+      
+      const permutations = await simulator.runAllPermutations(
+        'PFC',
         inputs,
         results,
-        {
-          mosfet: mosfetSuggestions[0].component,
-          capacitor: capacitorSuggestions[0].component,
-          inductor: inductorSuggestions[0].component,
+        config,
+        (current, total, permutation) => {
+          setSimulationProgress({ current, total, permutation });
         }
       );
 
-      // Run simulation
-      const simulationService = new SimulationService();
-      const simulationResults = await simulationService.runSimulation(
-        {
-          circuitType: 'PFC',
-          inputs,
-          results,
-          selectedComponents: {
-            mosfet: mosfetSuggestions[0].component,
-            capacitor: capacitorSuggestions[0].component,
-            inductor: inductorSuggestions[0].component,
-          },
-          timestamp: new Date().toISOString(),
-        },
-        netlist
-      );
+      toast.success(`${permutations.length} simulations complete!`);
 
-      // Navigate to results page
-      navigate('/simulation/results', { state: { results: simulationResults } });
-
-      toast.success("Simulation complete! Redirecting...");
+      // Navigate to report page
+      navigate('/simulation/report', {
+        state: {
+          report: {
+            circuitType: 'PFC',
+            timestamp: new Date().toISOString(),
+            inputs,
+            results,
+            permutations,
+            bestPermutation: permutations[0],
+            priorityMetrics: Object.entries(config.priorityMetrics)
+              .filter(([_, v]) => v)
+              .map(([k, _]) => k)
+          }
+        }
+      });
     } catch (error) {
       console.error('Simulation error:', error);
       toast.error("Simulation failed. Please try again.");
@@ -251,25 +254,16 @@ export const PFCCalculator = () => {
           Calculate Component Values
         </Button>
         
-        {results && (
+        {results && mosfetSuggestions.length > 0 && capacitorSuggestions.length > 0 && inductorSuggestions.length > 0 && (
           <Button 
-            onClick={handleRunSimulation} 
+            onClick={() => setShowConfigDialog(true)} 
             size="lg"
-            className="w-full" 
+            className="w-full gap-2" 
             variant="secondary"
             disabled={isSimulating}
           >
-            {isSimulating ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Running LTSpice Simulation...
-              </>
-            ) : (
-              <>
-                <Activity className="w-4 h-4 mr-2" />
-                Run LTSpice Simulation
-              </>
-            )}
+            <Settings className="w-4 h-4" />
+            Configure & Run Simulation
           </Button>
         )}
       </div>
@@ -407,6 +401,25 @@ export const PFCCalculator = () => {
             </Card>
           </div>
         </>
+      )}
+
+      {/* Simulation Config Dialog */}
+      <SimulationConfig
+        open={showConfigDialog}
+        onOpenChange={setShowConfigDialog}
+        mosfetSuggestions={mosfetSuggestions.map(s => s.component)}
+        capacitorSuggestions={capacitorSuggestions.map(s => s.component)}
+        inductorSuggestions={inductorSuggestions.map(s => s.component)}
+        onRunSimulation={handleRunSimulation}
+      />
+
+      {/* Simulation Progress */}
+      {isSimulating && (
+        <SimulationProgress
+          current={simulationProgress.current}
+          total={simulationProgress.total}
+          currentPermutation={simulationProgress.permutation}
+        />
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -6,9 +7,17 @@ import { Button } from "@/components/ui/button";
 import { CircuitCalculator, BuckInputs, validateInputs } from "@/lib/calculations";
 import { suggestMOSFETs, suggestCapacitors, suggestInductors } from "@/lib/componentSuggestions";
 import { toast } from "sonner";
-import { Gauge, Cpu, Battery, Codesandbox } from "lucide-react";
+import { Gauge, Cpu, Battery, Codesandbox, Settings } from "lucide-react";
+import SimulationConfig from "@/components/SimulationConfig";
+import SimulationProgress from "@/components/SimulationProgress";
+import { PermutationSimulator } from "@/lib/permutationSimulator";
+import { PermutationConfig } from "@/types/permutation";
 
 export const BuckCalculator = () => {
+  const navigate = useNavigate();
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [simulationProgress, setSimulationProgress] = useState({ current: 0, total: 0, permutation: '' });
+  const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [inputs, setInputs] = useState<BuckInputs>({
     v_in_min: 12,
     v_in_max: 24,
@@ -63,6 +72,53 @@ export const BuckCalculator = () => {
   const inductorSuggestions = results
     ? suggestInductors(results.inductance * 1e6, inputs.p_out_max / inputs.v_out_min)
     : [];
+
+  const handleRunSimulation = async (config: PermutationConfig) => {
+    if (!results) {
+      toast.error("Please calculate component values first");
+      return;
+    }
+
+    setIsSimulating(true);
+    setSimulationProgress({ current: 0, total: 0, permutation: '' });
+
+    try {
+      const simulator = new PermutationSimulator();
+      
+      const permutations = await simulator.runAllPermutations(
+        'BUCK',
+        inputs,
+        results,
+        config,
+        (current, total, permutation) => {
+          setSimulationProgress({ current, total, permutation });
+        }
+      );
+
+      toast.success(`${permutations.length} simulations complete!`);
+
+      navigate('/simulation/report', {
+        state: {
+          report: {
+            circuitType: 'BUCK',
+            timestamp: new Date().toISOString(),
+            inputs,
+            results,
+            permutations,
+            bestPermutation: permutations[0],
+            priorityMetrics: Object.entries(config.priorityMetrics)
+              .filter(([_, v]) => v)
+              .map(([k, _]) => k)
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Simulation error:', error);
+      toast.error("Simulation failed. Please try again.");
+    } finally {
+      setIsSimulating(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -231,9 +287,24 @@ export const BuckCalculator = () => {
         </Card>
       </div>
 
-      <Button onClick={handleCalculate} size="lg" className="w-full">
-        Calculate Component Values
-      </Button>
+      <div className="space-y-3">
+        <Button onClick={handleCalculate} size="lg" className="w-full">
+          Calculate Component Values
+        </Button>
+        
+        {results && mosfetSuggestions.length > 0 && outputCapSuggestions.length > 0 && inductorSuggestions.length > 0 && (
+          <Button 
+            onClick={() => setShowConfigDialog(true)} 
+            size="lg"
+            className="w-full gap-2" 
+            variant="secondary"
+            disabled={isSimulating}
+          >
+            <Settings className="w-4 h-4" />
+            Configure & Run Simulation
+          </Button>
+        )}
+      </div>
 
       {results && (
         <>
@@ -374,6 +445,25 @@ export const BuckCalculator = () => {
             </Card>
           </div>
         </>
+      )}
+
+      {/* Simulation Config Dialog */}
+      <SimulationConfig
+        open={showConfigDialog}
+        onOpenChange={setShowConfigDialog}
+        mosfetSuggestions={mosfetSuggestions.map(s => s.component)}
+        capacitorSuggestions={outputCapSuggestions.map(s => s.component)}
+        inductorSuggestions={inductorSuggestions.map(s => s.component)}
+        onRunSimulation={handleRunSimulation}
+      />
+
+      {/* Simulation Progress */}
+      {isSimulating && (
+        <SimulationProgress
+          current={simulationProgress.current}
+          total={simulationProgress.total}
+          currentPermutation={simulationProgress.permutation}
+        />
       )}
     </div>
   );
