@@ -123,8 +123,13 @@ def main():
         
         with col2:
             st.markdown("<br>", unsafe_allow_html=True)  # Add some spacing
-            if st.button("📚 Component Library", type="secondary"):
-                st.session_state.page = "Component Library"
+            col2a, col2b = st.columns(2)
+            with col2a:
+                if st.button("📚 Component Library", type="secondary", use_container_width=True):
+                    st.session_state.page = "Component Library"
+            with col2b:
+                if st.button("🔬 Simulation Demo", type="secondary", use_container_width=True):
+                    st.session_state.page = "Simulation Demo"
         
         # Main navigation for circuit types only
         selected = st.radio(
@@ -144,6 +149,17 @@ def main():
                     st.rerun()
             except Exception as e:
                 st.error(f"Error loading Component Library: {e}")
+                st.info("Please refresh the page or try again.")
+        elif st.session_state.get('page') == "Simulation Demo":
+            try:
+                from pages import simulation_demo
+                simulation_demo.show_simulation_demo()
+                # Add back button
+                if st.button("← Back to Circuits"):
+                    st.session_state.page = None
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Error loading Simulation Demo: {e}")
                 st.info("Please refresh the page or try again.")
         elif selected == "Buck Converter":
             try:

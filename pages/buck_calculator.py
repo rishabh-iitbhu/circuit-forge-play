@@ -184,3 +184,34 @@ def show():
                                 st.markdown(f"- {heuristic}")
             else:
                 st.warning("No suitable inductors found for these specifications")
+
+        # 🔬 SIMULATION SECTION
+        # Add simulation functionality after component recommendations
+        if 'buck_results' in st.session_state and 'buck_inputs' in st.session_state:
+            from lib.simulation_service import show_simulation_button, run_and_display_simulation
+            
+            results = st.session_state.buck_results
+            inputs = st.session_state.buck_inputs
+            
+            # Prepare circuit parameters for simulation
+            circuit_params = {
+                'input_voltage': inputs.v_in,
+                'output_voltage': inputs.v_out,
+                'load_current': inputs.i_out,
+                'switching_frequency': inputs.switching_freq,
+                'ripple_voltage': inputs.v_ripple_max,
+                'ripple_current': inputs.i_out_ripple
+            }
+            
+            # Prepare calculated components (convert to appropriate units)
+            calculated_components = {
+                'inductance': results.inductance * 1e6,  # Convert to µH
+                'output_capacitance': results.output_capacitance * 1e6,  # Convert to µF
+                'input_capacitance': results.input_capacitance * 1e6,  # Convert to µF
+                'duty_cycle': results.duty_cycle
+            }
+            
+            # Show simulation button and handle simulation
+            if show_simulation_button(circuit_params, calculated_components):
+                # User clicked simulate - run the simulation
+                run_and_display_simulation(circuit_params, calculated_components)
