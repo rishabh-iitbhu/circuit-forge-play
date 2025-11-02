@@ -8,24 +8,29 @@ import streamlit as st
 from typing import Dict, List, Any
 import pandas as pd
 
+# Check python-docx availability once at module level
+try:
+    from docx import Document
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+    Document = None
+
 def read_docx_content(file_path: str) -> str:
     """
     Read content from a .docx file
     
     Args:
         file_path: Path to the .docx file
-    
-    Returns:
-        Text content of the document
-    """
-    try:
-        # Try to import python-docx
-        try:
-            from docx import Document
-        except ImportError:
-            # Fail silently - don't show warning in UI every time
-            return ""
         
+    Returns:
+        String content of the document or empty string if failed
+    """
+    # Return empty if docx not available
+    if not DOCX_AVAILABLE:
+        return ""
+    
+    try:
         doc = Document(file_path)
         full_text = []
         

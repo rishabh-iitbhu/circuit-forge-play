@@ -106,10 +106,12 @@ def main():
         # Check python-docx availability once and show notification
         if 'docx_checked' not in st.session_state:
             try:
-                from docx import Document
-                st.session_state.docx_available = True
+                from lib.document_analyzer import DOCX_AVAILABLE
+                st.session_state.docx_available = DOCX_AVAILABLE
             except ImportError:
                 st.session_state.docx_available = False
+            
+            if not st.session_state.docx_available:
                 st.warning("⚠️ Advanced document analysis features are limited. Some AI-powered heuristics may use fallback data.", icon="⚠️")
             st.session_state.docx_checked = True
         
