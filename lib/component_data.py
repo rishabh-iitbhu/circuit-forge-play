@@ -46,15 +46,27 @@ class Inductor:
 
 
 def load_mosfets_from_csv() -> List[MOSFET]:
-    """Load MOSFET data from CSV file"""
+    """Load MOSFETs from CSV file with robust path handling"""
     try:
-        # Get the directory of this file
+        # Multiple path resolution strategies for different environments
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        # Go up one level to reach the project root, then into assets
-        csv_path = os.path.join(current_dir, '..', 'assets', 'component_data', 'mosfets.csv')
         
-        if not os.path.exists(csv_path):
-            print(f"Warning: MOSFET CSV file not found at {csv_path}, using fallback data")
+        # Try different path combinations
+        possible_paths = [
+            os.path.join(current_dir, '..', 'assets', 'component_data', 'mosfets.csv'),
+            os.path.join(os.getcwd(), 'assets', 'component_data', 'mosfets.csv'),
+            os.path.join(current_dir, '..', '..', 'assets', 'component_data', 'mosfets.csv'),
+            'assets/component_data/mosfets.csv'  # Relative path for cloud deployment
+        ]
+        
+        csv_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                csv_path = path
+                break
+        
+        if not csv_path:
+            print(f"Warning: MOSFET CSV file not found in any of these locations: {possible_paths}")
             return get_fallback_mosfets()
         
         df = pd.read_csv(csv_path)
@@ -81,13 +93,27 @@ def load_mosfets_from_csv() -> List[MOSFET]:
 
 
 def load_capacitors_from_csv() -> List[Capacitor]:
-    """Load Capacitor data from CSV file"""
+    """Load Capacitor data from CSV file with robust path handling"""
     try:
+        # Multiple path resolution strategies for different environments
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        csv_path = os.path.join(current_dir, '..', 'assets', 'component_data', 'capacitors.csv')
         
-        if not os.path.exists(csv_path):
-            print(f"Warning: Capacitor CSV file not found at {csv_path}, using fallback data")
+        # Try different path combinations
+        possible_paths = [
+            os.path.join(current_dir, '..', 'assets', 'component_data', 'capacitors.csv'),
+            os.path.join(os.getcwd(), 'assets', 'component_data', 'capacitors.csv'),
+            os.path.join(current_dir, '..', '..', 'assets', 'component_data', 'capacitors.csv'),
+            'assets/component_data/capacitors.csv'  # Relative path for cloud deployment
+        ]
+        
+        csv_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                csv_path = path
+                break
+        
+        if not csv_path:
+            print(f"Warning: Capacitor CSV file not found in any of these locations: {possible_paths}")
             return get_fallback_capacitors()
         
         df = pd.read_csv(csv_path)
@@ -113,13 +139,27 @@ def load_capacitors_from_csv() -> List[Capacitor]:
 
 
 def load_inductors_from_csv() -> List[Inductor]:
-    """Load Inductor data from CSV file"""
+    """Load Inductor data from CSV file with robust path handling"""
     try:
+        # Multiple path resolution strategies for different environments
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        csv_path = os.path.join(current_dir, '..', 'assets', 'component_data', 'inductors.csv')
         
-        if not os.path.exists(csv_path):
-            print(f"Warning: Inductor CSV file not found at {csv_path}, using fallback data")
+        # Try different path combinations
+        possible_paths = [
+            os.path.join(current_dir, '..', 'assets', 'component_data', 'inductors.csv'),
+            os.path.join(os.getcwd(), 'assets', 'component_data', 'inductors.csv'),
+            os.path.join(current_dir, '..', '..', 'assets', 'component_data', 'inductors.csv'),
+            'assets/component_data/inductors.csv'  # Relative path for cloud deployment
+        ]
+        
+        csv_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                csv_path = path
+                break
+        
+        if not csv_path:
+            print(f"Warning: Inductor CSV file not found in any of these locations: {possible_paths}")
             return get_fallback_inductors()
         
         df = pd.read_csv(csv_path)

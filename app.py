@@ -88,40 +88,62 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Import pages
-from pages import pfc_calculator, buck_calculator, component_library
+try:
+    from pages import buck_calculator, component_library
+    # Note: PFC calculator removed from navigation but import kept for backward compatibility
+    try:
+        from pages import pfc_calculator
+    except ImportError:
+        pfc_calculator = None
+except ImportError as e:
+    st.error(f"Error importing pages: {e}")
+    st.stop()
 
 def main():
     """Main application entry point"""
     
-    # Header with Component Library button in top-right
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        st.markdown('<div class="main-header">⚡ Circuit Designer Pro</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sub-header">Design circuits with AI-powered component calculations and grounded theory</div>', unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)  # Add some spacing
-        if st.button("📚 Component Library", type="secondary"):
-            st.session_state.page = "Component Library"
-    
-    # Main navigation for circuit types only
-    selected = st.radio(
-        "Select Circuit Type",
-        ["Buck Converter"],
-        horizontal=True,
-        label_visibility="collapsed"
-    )
-    
-    # Route to appropriate page
-    if st.session_state.get('page') == "Component Library":
-        component_library.show()
-        # Add back button
-        if st.button("← Back to Circuits"):
-            st.session_state.page = None
-            st.rerun()
-    elif selected == "Buck Converter":
-        st.session_state.page = None
-        buck_calculator.show()
+    try:
+        # Header with Component Library button in top-right
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            st.markdown('<div class="main-header">⚡ Circuit Designer Pro</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sub-header">Design circuits with AI-powered component calculations and grounded theory</div>', unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("<br>", unsafe_allow_html=True)  # Add some spacing
+            if st.button("📚 Component Library", type="secondary"):
+                st.session_state.page = "Component Library"
+        
+        # Main navigation for circuit types only
+        selected = st.radio(
+            "Select Circuit Type",
+            ["Buck Converter"],
+            horizontal=True,
+            label_visibility="collapsed"
+        )
+        
+        # Route to appropriate page
+        if st.session_state.get('page') == "Component Library":
+            try:
+                component_library.show()
+                # Add back button
+                if st.button("← Back to Circuits"):
+                    st.session_state.page = None
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Error loading Component Library: {e}")
+                st.info("Please refresh the page or try again.")
+        elif selected == "Buck Converter":
+            try:
+                st.session_state.page = None
+                buck_calculator.show()
+            except Exception as e:
+                st.error(f"Error loading Buck Converter: {e}")
+                st.info("Please refresh the page or try again.")
+                
+    except Exception as e:
+        st.error(f"Application error: {e}")
+        st.info("Please refresh the page. If the problem persists, check the deployment logs.")
 
 if __name__ == "__main__":
     main()
