@@ -23,8 +23,8 @@ def read_docx_content(file_path: str) -> str:
         try:
             from docx import Document
         except ImportError:
-            st.warning("python-docx not installed. Install with: pip install python-docx")
-            return "Document reading requires python-docx package."
+            # Fail silently - don't show warning in UI every time
+            return ""
         
         doc = Document(file_path)
         full_text = []
@@ -36,7 +36,8 @@ def read_docx_content(file_path: str) -> str:
         return '\n'.join(full_text)
     
     except Exception as e:
-        return f"Error reading document: {str(e)}"
+        # Fail silently for any document reading errors
+        return ""
 
 
 def analyze_inductor_heuristics() -> Dict[str, Any]:
