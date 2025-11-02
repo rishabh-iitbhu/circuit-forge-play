@@ -103,7 +103,11 @@ def show():
         # Get suggestions
         mosfet_suggestions = suggest_mosfets(inputs.v_out_max, max_current)
         capacitor_suggestions = suggest_capacitors(results.capacitance * 1e6, inputs.v_out_max)
-        inductor_suggestions = suggest_inductors(results.inductance * 1e6, results.ripple_current)
+        inductor_suggestions = suggest_inductors(
+            required_inductance_uh=results.inductance * 1e6, 
+            max_current=results.ripple_current,
+            frequency_hz=switching_freq
+        )
         
         # Display in tabs
         tab1, tab2, tab3 = st.tabs(["💻 MOSFETs", "🔋 Capacitors", "🧲 Inductors"])
@@ -144,5 +148,11 @@ def show():
                         st.markdown(f"**Inductance:** {ind.inductance}µH | **Current:** {ind.current}A")
                         st.markdown(f"**DCR:** {ind.dcr}mΩ | **Isat:** {ind.sat_current}A | **Package:** {ind.package}")
                         st.caption(f"💡 **Why:** {suggestion.reason}")
+                        
+                        # Show applied heuristics if available
+                        if hasattr(suggestion, 'heuristics_applied') and suggestion.heuristics_applied:
+                            st.markdown("**📋 Applied Design Heuristics:**")
+                            for heuristic in suggestion.heuristics_applied[:3]:  # Show top 3
+                                st.markdown(f"- {heuristic}")
             else:
                 st.warning("No suitable inductors found for these specifications")

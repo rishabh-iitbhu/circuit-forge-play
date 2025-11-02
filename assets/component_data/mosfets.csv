@@ -1,0 +1,19 @@
+name,manufacturer,vds,id,rdson,qg,package,typical_use,efficiency_range
+BSC016N06NS,Infineon,60,150,1.6,44,SuperSO8,Mid-power buck low loss,96–98%
+CSD19505KCS,Texas Instruments,60,80,2.5,37,TO-220,Classic synchronous buck,95–97%
+IPB017N10N5,Infineon,100,120,1.7,70,D²PAK,48V bus robotics converter,96–97%
+AOZ5311NQI,Alpha & Omega,25,40,6,12,DFN,Compact logic supply buck,94–96%
+SiSS22DN,Vishay,30,60,2.2,15,PowerPAK,Small robots drone logic rail,95–97%
+NVMFS6H824NL,OnSemi,80,50,4.3,38,SO-8FL,Automotive AGV converter,95–97%
+BSC340N08NS3G,Infineon,80,90,3.4,26,SuperSO8,Mid-range converter,96–97%
+CSD19536KCS,Texas Instruments,100,100,2.3,45,TO-220,High-efficiency buck,95–97%
+IPB65R045CFD7,Infineon,650,18,45,29,TO-220,SiC replacement candidate,94–96%
+AOZ5332QI,Alpha & Omega,60,25,8,0,QFN (Integrated),Integrated power stage,94–96%
+IRLZ44N,Infineon (legacy IR),55,47,22,67,TO-220,Benchmark reference MOSFET,90–92%
+NTP65N10,OnSemi,100,60,6.5,35,TO-220,Robust mid-range FET,93–95%
+BSC057N08NS,Infineon,80,70,5.7,40,SuperSO8,Common industrial buck FET,94–96%
+SiR158DP,Vishay,100,75,4,35,PowerPAK SO-8,Low gate charge FET,95–96%
+FDBL9402,OnSemi,40,80,3.6,18,Power56,Low-voltage high-efficiency,96–98%
+TPHR8504PL,Toshiba,40,70,4.5,20,SOP Advance,Toshiba for 12V rails,95–97%
+AON6522,Alpha & Omega,30,60,3,14,DFN 5x6,Compact low-side FET,95–97%
+NTMFS5C628NL,OnSemi,80,70,4.2,34,SO-8FL,High frequency efficiency,95–97%

@@ -1,5 +1,6 @@
 """
 Component suggestion logic for recommending MOSFETs, capacitors, and inductors
+Now incorporates design heuristics from documents
 """
 
 from typing import List, Dict, Tuple
@@ -15,185 +16,476 @@ class ComponentSuggestion:
     component: MOSFET | Capacitor | Inductor
     reason: str
     score: float = 0.0
+    heuristics_applied: List[str] = None
+
+    def __post_init__(self):
+        if self.heuristics_applied is None:
+            self.heuristics_applied = []
 
 
-def suggest_mosfets(max_voltage: float, max_current: float) -> List[ComponentSuggestion]:
+def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float = 65000) -> List[ComponentSuggestion]:
     """
     Suggest MOSFETs based on voltage and current requirements
+    Now incorporates design heuristics from documents
     
     Args:
         max_voltage: Maximum voltage requirement (V)
         max_current: Maximum current requirement (A)
+        frequency_hz: Switching frequency (Hz) for improved analysis
         
     Returns:
-        List of MOSFET suggestions sorted by suitability
+        List of MOSFET suggestions sorted by suitability with applied heuristics
     """
     suggestions = []
     
-    # Safety margin
-    voltage_margin = 1.5
-    current_margin = 1.3
+    # Try to load and analyze design heuristics
+    heuristics_analysis = None
+    applied_heuristics = []
+    
+    try:
+        from lib.document_analyzer import analyze_mosfet_heuristics
+        heuristics_analysis = analyze_mosfet_heuristics()
+        
+        if heuristics_analysis['updated_algorithm']:
+            applied_heuristics.append(f"✅ Using updated algorithm from {len(heuristics_analysis['documents_found'])} document(s)")
+    except Exception as e:
+        applied_heuristics.append(f"⚠️ Using default algorithm (heuristics error: {str(e)[:50]})")
+    
+    # Dynamic safety margins based on heuristics
+    voltage_margin = 1.5  # Default 50% margin
+    current_margin = 1.3  # Default 30% margin
+    
+    # Analyze heuristics for specific margin recommendations
+    if heuristics_analysis and heuristics_analysis['selection_criteria']:
+        for doc_criteria in heuristics_analysis['selection_criteria'].values():
+            # Look for voltage margin guidelines
+            for guideline in doc_criteria.get('voltage_derating_guidelines', []):
+                if 'margin' in guideline.lower() or 'derating' in guideline.lower():
+                    # Try to extract percentage
+                    import re
+                    numbers = re.findall(r'\d+', guideline)
+                    if numbers:
+                        try:
+                            margin_percent = int(numbers[0])
+                            if 20 <= margin_percent <= 200:  # Reasonable range
+                                voltage_margin = 1 + (margin_percent / 100)
+                                applied_heuristics.append(f"📋 Applied voltage margin: {margin_percent}% from heuristics")
+                                break
+                        except:
+                            pass
+            
+            # Look for current margin guidelines
+            for guideline in doc_criteria.get('current_derating_guidelines', []):
+                if 'margin' in guideline.lower() or 'derating' in guideline.lower():
+                    import re
+                    numbers = re.findall(r'\d+', guideline)
+                    if numbers:
+                        try:
+                            margin_percent = int(numbers[0])
+                            if 10 <= margin_percent <= 100:  # Reasonable range
+                                current_margin = 1 + (margin_percent / 100)
+                                applied_heuristics.append(f"📋 Applied current margin: {margin_percent}% from heuristics")
+                                break
+                        except:
+                            pass
     
     for mosfet in MOSFET_LIBRARY:
-        # Check if component meets requirements
+        # Check if component meets requirements with updated margins
         if mosfet.vds < max_voltage * voltage_margin:
             continue
         if mosfet.id < max_current * current_margin:
             continue
         
-        # Calculate suitability score
+        # Calculate suitability score with heuristics
         score = 100.0
+        component_heuristics = applied_heuristics.copy()
         
-        # Prefer lower RDS(on) for efficiency
-        score -= mosfet.rdson * 2
+        # Prefer lower RDS(on) for efficiency with frequency consideration
+        rdson_penalty = mosfet.rdson * 2
+        if frequency_hz > 100000:  # High frequency applications
+            rdson_penalty *= 1.5  # Penalize high RDS(on) more at high frequencies
+            component_heuristics.append("🔄 High-frequency RDS(on) penalty applied")
+        score -= rdson_penalty
         
-        # Prefer appropriate voltage rating (not too high)
+        # Voltage rating optimization
         voltage_ratio = mosfet.vds / (max_voltage * voltage_margin)
         if voltage_ratio > 2:
             score -= (voltage_ratio - 2) * 10
+        elif 1.2 <= voltage_ratio <= 1.8:  # Sweet spot for voltage utilization
+            score += 5
+            component_heuristics.append("⚡ Optimal voltage utilization")
         
-        # Prefer appropriate current rating
+        # Current rating optimization
         current_ratio = mosfet.id / (max_current * current_margin)
         if current_ratio > 2:
             score -= (current_ratio - 2) * 5
+        elif 1.2 <= current_ratio <= 1.8:  # Sweet spot for current utilization
+            score += 5
+            component_heuristics.append("⚡ Optimal current utilization")
         
-        # Build reason string
+        # Gate charge optimization for high frequency
+        if mosfet.qg > 0 and frequency_hz > 50000:
+            if mosfet.qg < 30:  # Low gate charge is good for high frequency
+                score += 10
+                component_heuristics.append("🚀 Low gate charge for high frequency")
+            elif mosfet.qg > 60:  # High gate charge penalty
+                score -= 5
+                component_heuristics.append("⚠️ High gate charge penalty")
+        
+        # Manufacturer preference based on heuristics
+        if heuristics_analysis and heuristics_analysis['selection_criteria']:
+            for doc_criteria in heuristics_analysis['selection_criteria'].values():
+                for guideline in doc_criteria.get('general_guidelines', []):
+                    # Check if this MOSFET's manufacturer is mentioned favorably
+                    if mosfet.manufacturer.lower() in guideline.lower():
+                        score += 10
+                        component_heuristics.append(f"🎯 Recommended manufacturer from heuristics")
+                        break
+        
+        # Efficiency range bonus
+        if '98%' in mosfet.efficiency_range or '97%' in mosfet.efficiency_range:
+            score += 5
+            component_heuristics.append("⭐ High efficiency rating")
+        
+        # Build comprehensive reason string
         reason = f"VDS={mosfet.vds}V ({voltage_ratio:.1f}x margin), "
         reason += f"ID={mosfet.id}A ({current_ratio:.1f}x margin), "
         reason += f"RDS(on)={mosfet.rdson}mΩ. {mosfet.typical_use}"
         
+        # Add heuristics summary to reason
+        if component_heuristics:
+            reason += f". Applied: {'; '.join(component_heuristics[:2])}"
+        
         suggestions.append(ComponentSuggestion(
             component=mosfet,
             reason=reason,
-            score=score
+            score=score,
+            heuristics_applied=component_heuristics
         ))
     
     # Sort by score (highest first)
     suggestions.sort(key=lambda x: x.score, reverse=True)
     
+    # Add global heuristics summary to top suggestions
+    for i, suggestion in enumerate(suggestions[:3]):
+        if applied_heuristics and i == 0:  # Add to top suggestion
+            suggestion.heuristics_applied.extend([
+                f"📊 Analysis from: {', '.join(heuristics_analysis.get('documents_found', ['default']))}"
+            ])
+    
     return suggestions[:5]  # Return top 5
 
 
-def suggest_capacitors(required_capacitance_uf: float, max_voltage: float) -> List[ComponentSuggestion]:
+def suggest_capacitors(required_capacitance_uf: float, max_voltage: float, frequency_hz: float = 65000) -> List[ComponentSuggestion]:
     """
     Suggest capacitors based on capacitance and voltage requirements
+    Now incorporates design heuristics from documents
     
     Args:
         required_capacitance_uf: Required capacitance (µF)
         max_voltage: Maximum voltage requirement (V)
+        frequency_hz: Switching frequency (Hz) for improved analysis
         
     Returns:
-        List of capacitor suggestions sorted by suitability
+        List of capacitor suggestions sorted by suitability with applied heuristics
     """
     suggestions = []
     
-    # Safety margin
-    voltage_margin = 1.2
+    # Try to load and analyze design heuristics
+    heuristics_analysis = None
+    applied_heuristics = []
+    
+    try:
+        from lib.document_analyzer import analyze_capacitor_heuristics
+        heuristics_analysis = analyze_capacitor_heuristics()
+        
+        if heuristics_analysis['updated_algorithm']:
+            applied_heuristics.append(f"✅ Using updated algorithm from {len(heuristics_analysis['documents_found'])} document(s)")
+    except Exception as e:
+        applied_heuristics.append(f"⚠️ Using default algorithm (heuristics error: {str(e)[:50]})")
+    
+    # Dynamic safety margins based on heuristics
+    voltage_margin = 1.2  # Default 20% margin
+    capacitance_tolerance = 2.0  # Default 2x tolerance (0.5x to 2x)
+    
+    # Analyze heuristics for specific margin recommendations
+    if heuristics_analysis and heuristics_analysis['selection_criteria']:
+        for doc_criteria in heuristics_analysis['selection_criteria'].values():
+            # Look for voltage margin guidelines
+            for guideline in doc_criteria.get('voltage_derating_guidelines', []):
+                if 'margin' in guideline.lower() or 'derating' in guideline.lower():
+                    # Try to extract percentage
+                    import re
+                    numbers = re.findall(r'\d+', guideline)
+                    if numbers:
+                        try:
+                            margin_percent = int(numbers[0])
+                            if 10 <= margin_percent <= 100:  # Reasonable range
+                                voltage_margin = 1 + (margin_percent / 100)
+                                applied_heuristics.append(f"📋 Applied voltage margin: {margin_percent}% from heuristics")
+                                break
+                        except:
+                            pass
+            
+            # Look for capacitance tolerance guidelines
+            for guideline in doc_criteria.get('capacitance_tolerance', []):
+                if 'tolerance' in guideline.lower() or 'range' in guideline.lower():
+                    import re
+                    numbers = re.findall(r'\d+', guideline)
+                    if numbers:
+                        try:
+                            tolerance_factor = int(numbers[0]) / 100
+                            if 0.5 <= tolerance_factor <= 5.0:  # Reasonable range
+                                capacitance_tolerance = tolerance_factor
+                                applied_heuristics.append(f"📋 Applied capacitance tolerance: {int(tolerance_factor*100)}% from heuristics")
+                                break
+                        except:
+                            pass
     
     for capacitor in CAPACITOR_LIBRARY:
-        # Check voltage rating
+        # Check voltage rating with updated margin
         if capacitor.voltage < max_voltage * voltage_margin:
             continue
         
-        # Check if capacitance is suitable (within reasonable range)
+        # Check if capacitance is suitable with updated tolerance
         cap_ratio = capacitor.capacitance / required_capacitance_uf
-        if cap_ratio < 0.5 or cap_ratio > 5:
+        if cap_ratio < (1/capacitance_tolerance) or cap_ratio > capacitance_tolerance:
             continue
         
-        # Calculate suitability score
+        # Calculate suitability score with heuristics
         score = 100.0
+        component_heuristics = applied_heuristics.copy()
         
         # Prefer capacitance close to required value
         cap_diff = abs(capacitor.capacitance - required_capacitance_uf)
         score -= cap_diff * 0.1
         
-        # Prefer lower ESR
+        # ESR optimization with frequency consideration
         try:
             esr_val = float(capacitor.esr.replace('~', '').replace('low', '5').split('-')[0])
-            score -= esr_val * 0.5
+            esr_penalty = esr_val * 0.5
+            
+            # High frequency applications prefer lower ESR
+            if frequency_hz > 100000:
+                if esr_val < 10:  # Low ESR is good for high frequency
+                    score += 10
+                    component_heuristics.append("🚀 Low ESR for high frequency")
+                elif esr_val > 50:  # High ESR penalty
+                    esr_penalty *= 2
+                    component_heuristics.append("⚠️ High ESR penalty for high frequency")
+            
+            score -= esr_penalty
         except:
             pass
         
-        # Prefer appropriate voltage rating (not too high)
+        # Voltage utilization optimization
         voltage_ratio = capacitor.voltage / (max_voltage * voltage_margin)
-        if voltage_ratio > 2:
-            score -= (voltage_ratio - 2) * 10
+        if voltage_ratio > 3:
+            score -= (voltage_ratio - 3) * 10
+        elif 1.2 <= voltage_ratio <= 2.0:  # Sweet spot for voltage utilization
+            score += 5
+            component_heuristics.append("⚡ Optimal voltage utilization")
         
-        # Build reason string
+        # Capacitor type preference based on application
+        if frequency_hz > 100000:  # High frequency applications
+            if 'MLCC' in capacitor.type:
+                score += 15
+                component_heuristics.append("🎯 MLCC preferred for high frequency")
+            elif 'Polymer' in capacitor.type:
+                score += 10
+                component_heuristics.append("🎯 Polymer suitable for high frequency")
+        else:  # Lower frequency applications
+            if 'Electrolytic' in capacitor.type and required_capacitance_uf > 100:
+                score += 5
+                component_heuristics.append("🎯 Electrolytic suitable for bulk capacitance")
+        
+        # Temperature range consideration
+        if '-55' in capacitor.temp_range and '125' in capacitor.temp_range:
+            score += 5
+            component_heuristics.append("🌡️ Wide temperature range")
+        
+        # Manufacturer preference based on heuristics
+        if heuristics_analysis and heuristics_analysis['selection_criteria']:
+            for doc_criteria in heuristics_analysis['selection_criteria'].values():
+                for guideline in doc_criteria.get('general_guidelines', []):
+                    # Check if this capacitor's manufacturer is mentioned favorably
+                    if capacitor.manufacturer.lower() in guideline.lower():
+                        score += 10
+                        component_heuristics.append(f"🎯 Recommended manufacturer from heuristics")
+                        break
+        
+        # Build comprehensive reason string
         reason = f"{capacitor.capacitance}µF at {capacitor.voltage}V "
         reason += f"({voltage_ratio:.1f}x margin). "
         reason += f"{capacitor.type}, ESR={capacitor.esr}mΩ. "
         reason += f"Suitable for {capacitor.primary_use}"
         
+        # Add heuristics summary to reason
+        if component_heuristics:
+            reason += f". Applied: {'; '.join(component_heuristics[:2])}"
+        
         suggestions.append(ComponentSuggestion(
             component=capacitor,
             reason=reason,
-            score=score
+            score=score,
+            heuristics_applied=component_heuristics
         ))
     
     # Sort by score (highest first)
     suggestions.sort(key=lambda x: x.score, reverse=True)
     
+    # Add global heuristics summary to top suggestions
+    for i, suggestion in enumerate(suggestions[:3]):
+        if applied_heuristics and i == 0:  # Add to top suggestion
+            suggestion.heuristics_applied.extend([
+                f"📊 Analysis from: {', '.join(heuristics_analysis.get('documents_found', ['default']))}"
+            ])
+    
     return suggestions[:5]  # Return top 5
 
 
-def suggest_inductors(required_inductance_uh: float, max_current: float) -> List[ComponentSuggestion]:
+def suggest_inductors(required_inductance_uh: float, max_current: float, frequency_hz: float = 65000) -> List[ComponentSuggestion]:
     """
     Suggest inductors based on inductance and current requirements
+    Now incorporates design heuristics from documents
     
     Args:
         required_inductance_uh: Required inductance (µH)
         max_current: Maximum current requirement (A)
+        frequency_hz: Switching frequency (Hz) for improved analysis
         
     Returns:
-        List of inductor suggestions sorted by suitability
+        List of inductor suggestions sorted by suitability with applied heuristics
     """
     suggestions = []
     
-    # Safety margin
-    current_margin = 1.3
+    # Try to load and analyze design heuristics
+    heuristics_analysis = None
+    applied_heuristics = []
+    
+    try:
+        from lib.document_analyzer import analyze_inductor_heuristics
+        heuristics_analysis = analyze_inductor_heuristics()
+        
+        if heuristics_analysis['updated_algorithm']:
+            applied_heuristics.append(f"✅ Using updated algorithm from {len(heuristics_analysis['documents_found'])} document(s)")
+    except Exception as e:
+        applied_heuristics.append(f"⚠️ Using default algorithm (heuristics error: {str(e)[:50]})")
+    
+    # Dynamic safety margins based on heuristics
+    current_margin = 1.3  # Default 30% margin
+    inductance_tolerance = 0.5  # Default 50% tolerance
+    
+    # Analyze heuristics for specific margin recommendations
+    if heuristics_analysis and heuristics_analysis['selection_criteria']:
+        for doc_criteria in heuristics_analysis['selection_criteria'].values():
+            # Look for current margin guidelines
+            for guideline in doc_criteria.get('current_rating_guidelines', []):
+                if 'margin' in guideline.lower() or 'derating' in guideline.lower():
+                    # Try to extract percentage
+                    import re
+                    numbers = re.findall(r'\d+', guideline)
+                    if numbers:
+                        try:
+                            margin_percent = int(numbers[0])
+                            if 10 <= margin_percent <= 100:  # Reasonable range
+                                current_margin = 1 + (margin_percent / 100)
+                                applied_heuristics.append(f"📋 Applied current margin: {margin_percent}% from heuristics")
+                                break
+                        except:
+                            pass
+            
+            # Look for inductance tolerance guidelines
+            for guideline in doc_criteria.get('inductance_selection', []):
+                if 'tolerance' in guideline.lower() or 'range' in guideline.lower():
+                    import re
+                    numbers = re.findall(r'\d+', guideline)
+                    if numbers:
+                        try:
+                            tolerance_percent = int(numbers[0])
+                            if 10 <= tolerance_percent <= 100:  # Reasonable range
+                                inductance_tolerance = tolerance_percent / 100
+                                applied_heuristics.append(f"📋 Applied inductance tolerance: {tolerance_percent}% from heuristics")
+                                break
+                        except:
+                            pass
     
     for inductor in INDUCTOR_LIBRARY:
-        # Check current rating
+        # Check current rating with updated margin
         if inductor.current < max_current * current_margin:
             continue
         if inductor.sat_current < max_current * current_margin * 1.2:
             continue
         
-        # Check if inductance is suitable (within reasonable range)
+        # Check if inductance is suitable with updated tolerance
         ind_ratio = inductor.inductance / required_inductance_uh
-        if ind_ratio < 0.5 or ind_ratio > 5:
+        if ind_ratio < (1 - inductance_tolerance) or ind_ratio > (1 + inductance_tolerance):
             continue
         
-        # Calculate suitability score
+        # Calculate suitability score with heuristics
         score = 100.0
+        component_heuristics = applied_heuristics.copy()
         
         # Prefer inductance close to required value
         ind_diff = abs(inductor.inductance - required_inductance_uh) / required_inductance_uh
         score -= ind_diff * 50
         
-        # Prefer lower DCR for efficiency
-        score -= inductor.dcr * 0.01
+        # DCR penalty with frequency consideration
+        dcr_penalty = inductor.dcr * 0.01
+        if frequency_hz > 100000:  # High frequency applications
+            dcr_penalty *= 1.5  # Penalize high DCR more at high frequencies
+            component_heuristics.append("🔄 High-frequency DCR penalty applied")
+        score -= dcr_penalty
         
-        # Prefer appropriate current rating (not too high)
+        # Current utilization optimization
         current_ratio = inductor.current / (max_current * current_margin)
         if current_ratio > 2:
             score -= (current_ratio - 2) * 10
+        elif 1.2 <= current_ratio <= 1.8:  # Sweet spot for utilization
+            score += 5
+            component_heuristics.append("⚡ Optimal current utilization")
         
-        # Build reason string
+        # Core material bonus based on heuristics
+        if heuristics_analysis and heuristics_analysis['selection_criteria']:
+            for doc_criteria in heuristics_analysis['selection_criteria'].values():
+                for guideline in doc_criteria.get('core_material_recommendations', []):
+                    # Check if this inductor's manufacturer/type is mentioned favorably
+                    if inductor.manufacturer.lower() in guideline.lower():
+                        score += 10
+                        component_heuristics.append(f"🎯 Recommended manufacturer from heuristics")
+                        break
+        
+        # Package preference based on frequency
+        if frequency_hz > 100000 and 'SO' in inductor.package.upper():
+            score += 5
+            component_heuristics.append("📦 SMD package suitable for high frequency")
+        
+        # Build comprehensive reason string
         reason = f"{inductor.inductance}µH, rated for {inductor.current}A "
         reason += f"({current_ratio:.1f}x margin), "
         reason += f"Isat={inductor.sat_current}A. "
         reason += f"DCR={inductor.dcr}mΩ. "
         reason += f"{inductor.package} package"
         
+        # Add heuristics summary to reason
+        if component_heuristics:
+            reason += f". Applied: {'; '.join(component_heuristics[:2])}"
+        
         suggestions.append(ComponentSuggestion(
             component=inductor,
             reason=reason,
-            score=score
+            score=score,
+            heuristics_applied=component_heuristics
         ))
     
     # Sort by score (highest first)
     suggestions.sort(key=lambda x: x.score, reverse=True)
+    
+    # Add global heuristics summary to top suggestions
+    for i, suggestion in enumerate(suggestions[:3]):
+        if applied_heuristics and i == 0:  # Add to top suggestion
+            suggestion.heuristics_applied.extend([
+                f"📊 Analysis from: {', '.join(heuristics_analysis.get('documents_found', ['default']))}"
+            ])
     
     return suggestions[:5]  # Return top 5

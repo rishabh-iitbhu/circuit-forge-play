@@ -1,0 +1,13 @@
+part_number,manufacturer,capacitance,voltage,type,esr,primary_use,temp_range
+C3216X7R1H106K160AC,TDK,10,50,MLCC X7R,~2-5,HF ripple + local decoupling,-55..125
+C3225X7R1E226M250AB,TDK,22,25,MLCC X7R,~2-5,HF ripple + bulk on 12V,-55..125
+C3216X7R1H106K160AE,TDK,10,50,MLCC X7R,~2-5,HF ripple + local decoupling,-55..125
+CGA6P3X7R1E226M250AE,TDK,22,25,MLCC X7R,~2-5,HF ripple + bulk on 12V,-55..125
+MMASU32MAB7106KPNA01,Taiyo Yuden,10,50,MLCC X7R,~2-5,HF ripple on 24V rail,-55..125
+MMJCU32MLB7106KPPDT1,Taiyo Yuden,10,50,MLCC X7R,~2-5,HF ripple on 24V rail,-55..125
+25SVPF330M,Panasonic,330,25,Polymer (OS-CON),~12-20,Bulk energy + damping (12V),-55..105
+63SXV100M,Panasonic,100,63,Polymer (OS-CON),low,Bulk energy + damping (24V),-55..125
+A750KW337M1VAAE020,KEMET,330,35,Polymer Aluminum,20,Bulk energy + damping (24V),-55..105
+A750KS227M1EAAE015,KEMET,220,63,Polymer Aluminum,~15,Bulk energy + damping (24V high margin),-55..105
+RPS1C330MCN1GS,Nichicon,33,16,Polymer Aluminum (SMD),40,Small bulk (12V aux),-55..105
+EEU-FS1V331LB,Panasonic,330,35,Aluminum Electrolytic,low,Bulk energy (24V) higher life spec,-55..105

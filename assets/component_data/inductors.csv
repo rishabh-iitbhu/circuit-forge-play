@@ -1,0 +1,7 @@
+part_number,manufacturer,inductance,current,dcr,sat_current,package
+SER2915H-472KL,Coilcraft,4700,0.73,1850,0.95,SER2915
+SER2915H-103KL,Coilcraft,10000,0.48,4200,0.62,SER2915
+744 043 22,Würth Elektronik,220,3.2,48,4.5,WE-PD
+744 043 47,Würth Elektronik,470,2.1,105,3.0,WE-PD
+DO3316P-472HC,Coilcraft,4700,1.0,1200,1.3,DO3316P
+78F102J-RC,Murata,1000,1.5,280,2.2,Radial

@@ -1,49 +1,46 @@
 """
 Component Library Display
+Now loads data from CSV files in assets folder
 """
 
 import streamlit as st
 import pandas as pd
-from lib.component_data import MOSFET_LIBRARY, CAPACITOR_LIBRARY, INDUCTOR_LIBRARY
-
-def show_sidebar_library():
-    """Show component library in sidebar"""
-    
-    library_type = st.selectbox(
-        "Component Type",
-        ["MOSFETs", "Capacitors", "Inductors"]
-    )
-    
-    if library_type == "MOSFETs":
-        st.markdown("### MOSFETs")
-        for mosfet in MOSFET_LIBRARY[:5]:  # Show first 5
-            with st.expander(f"{mosfet.name}"):
-                st.markdown(f"**Manufacturer:** {mosfet.manufacturer}")
-                st.markdown(f"**VDS:** {mosfet.vds}V | **ID:** {mosfet.id}A")
-                st.markdown(f"**RDS(on):** {mosfet.rdson}mΩ")
-    
-    elif library_type == "Capacitors":
-        st.markdown("### Capacitors")
-        for cap in CAPACITOR_LIBRARY[:5]:  # Show first 5
-            with st.expander(f"{cap.part_number}"):
-                st.markdown(f"**Manufacturer:** {cap.manufacturer}")
-                st.markdown(f"**Cap:** {cap.capacitance}µF | **V:** {cap.voltage}V")
-                st.markdown(f"**Type:** {cap.type}")
-    
-    elif library_type == "Inductors":
-        st.markdown("### Inductors")
-        for ind in INDUCTOR_LIBRARY:
-            with st.expander(f"{ind.part_number}"):
-                st.markdown(f"**Manufacturer:** {ind.manufacturer}")
-                st.markdown(f"**L:** {ind.inductance}µH | **I:** {ind.current}A")
-                st.markdown(f"**Package:** {ind.package}")
+from lib.component_data import MOSFET_LIBRARY, CAPACITOR_LIBRARY, INDUCTOR_LIBRARY, reload_component_data
+from lib.design_heuristics import show_design_documents_info, refresh_recommendations_with_heuristics
 
 
 def show():
     """Display full component library page"""
     
+    # Back button and reload functionality
+    col1, col2, col3, col4 = st.columns([1, 3, 2, 2])
+    with col1:
+        if st.button("← Back"):
+            st.session_state.page = None
+            st.rerun()
+    
+    with col3:
+        if st.button("🔄 Reload Data", help="Reload component data from CSV files"):
+            reload_component_data()
+            st.success("Component data reloaded from CSV files!")
+            st.rerun()
+    
+    with col4:
+        if st.button("📋 Design Docs", help="View design heuristics documents"):
+            st.session_state.show_design_docs = not st.session_state.get('show_design_docs', False)
+    
     st.header("📚 Component Library")
     st.markdown("Browse available MOSFETs, capacitors, and inductors for your circuit designs")
+    st.markdown("*Data is loaded from CSV files in the `assets/component_data/` folder*")
+    
+    # Show design documents section if requested
+    if st.session_state.get('show_design_docs', False):
+        st.markdown("---")
+        show_design_documents_info()
+        
+        if st.button("🔄 Refresh Recommendations with Latest Heuristics"):
+            refresh_recommendations_with_heuristics()
+    
     st.markdown("---")
     
     # Tabs for different component types
@@ -61,14 +58,14 @@ def show():
                 "VDS (V)": mosfet.vds,
                 "ID (A)": mosfet.id,
                 "RDS(on) (mΩ)": mosfet.rdson,
-                "Qg (nC)": mosfet.qg if mosfet.qg > 0 else "N/A",
+                "Qg (nC)": mosfet.qg if mosfet.qg > 0 else 0,  # Use 0 instead of "N/A"
                 "Package": mosfet.package,
                 "Efficiency": mosfet.efficiency_range,
                 "Typical Use": mosfet.typical_use
             })
         
         df_mosfet = pd.DataFrame(mosfet_data)
-        st.dataframe(df_mosfet, use_container_width=True)
+        st.dataframe(df_mosfet, width="stretch")
         
         # Detailed view
         st.markdown("---")
@@ -109,7 +106,7 @@ def show():
             })
         
         df_cap = pd.DataFrame(cap_data)
-        st.dataframe(df_cap, use_container_width=True)
+        st.dataframe(df_cap, width="stretch")
         
         # Detailed view
         st.markdown("---")
@@ -148,7 +145,7 @@ def show():
             })
         
         df_ind = pd.DataFrame(ind_data)
-        st.dataframe(df_ind, use_container_width=True)
+        st.dataframe(df_ind, width="stretch")
         
         # Detailed view
         st.markdown("---")

@@ -1,0 +1,4 @@
+Component_Type,Integration_Level,Status,Features_Implemented,Features_Planned,Document_Types_Supported,Auto_Analysis,Scoring_Weight,Last_Updated
+Inductors,3,COMPLETE,"Current Derating, DCR Optimization, Core Material Preference, Frequency Consideration, Manufacturer Bonus","Thermal Analysis, Saturation Current Curves","docx, pdf, txt, md",YES,85,2024-11-01
+MOSFETs,1,NOT_STARTED,"Basic Voltage/Current Filtering, RDS Scoring","Voltage Derating, Gate Charge Analysis, Thermal Modeling, Package Selection, Efficiency Optimization","docx, pdf, txt, md",NO,30,2024-11-01
+Capacitors,1,NOT_STARTED,"Basic Voltage/Capacitance Filtering, ESR Penalty","Voltage Derating, ESR Optimization, Ripple Current Analysis, Temperature Coefficient, Type Selection Logic","docx, pdf, txt, md",NO,35,2024-11-01

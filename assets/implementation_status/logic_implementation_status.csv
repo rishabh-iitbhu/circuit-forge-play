@@ -1,0 +1,31 @@
+Logic_Category,Component_Type,Feature,Implementation_Level,Status,Documents_Found,Last_Updated,Heuristics_Applied,Score_Weight,Notes
+Base_Calculations,Buck_Converter,Inductance_Calculation,3,COMPLETE,0,2024-11-01,Standard_Formula,100,Uses L=VT/ΔI formula
+Base_Calculations,Buck_Converter,Capacitance_Calculation,3,COMPLETE,0,2024-11-01,Standard_Formula,100,Uses C=IΔt/ΔV formula
+Base_Calculations,Buck_Converter,Current_Calculation,3,COMPLETE,0,2024-11-01,Standard_Formula,100,Uses I=P/V calculation
+Base_Calculations,PFC_Circuit,Inductance_Calculation,3,COMPLETE,0,2024-11-01,Standard_Formula,100,Uses boost converter formula
+Base_Calculations,PFC_Circuit,Capacitance_Calculation,3,COMPLETE,0,2024-11-01,Standard_Formula,100,Energy storage based calculation
+Component_Selection,Inductors,Document_Analysis,3,COMPLETE,1,2024-11-01,Current_Margin_DCR_Core_Material,85,Reads docx files for criteria
+Component_Selection,Inductors,Current_Derating,3,COMPLETE,1,2024-11-01,Dynamic_Margin_From_Docs,80,30% default adjustable from docs
+Component_Selection,Inductors,Inductance_Tolerance,3,COMPLETE,1,2024-11-01,Tolerance_From_Docs,75,50% default adjustable from docs
+Component_Selection,Inductors,Frequency_Optimization,3,COMPLETE,1,2024-11-01,High_Freq_DCR_Penalty,70,Penalizes high DCR at high freq
+Component_Selection,Inductors,Manufacturer_Preference,2,COMPLETE,1,2024-11-01,Doc_Mentioned_Bonus,60,Bonus for recommended manufacturers
+Component_Selection,MOSFETs,Document_Analysis,0,NOT_STARTED,0,2024-11-01,None,0,No document analysis implemented
+Component_Selection,MOSFETs,Voltage_Derating,1,PARTIAL,0,2024-11-01,Fixed_1.5x_Margin,40,Hardcoded 1.5x margin only
+Component_Selection,MOSFETs,Current_Derating,1,PARTIAL,0,2024-11-01,Fixed_1.3x_Margin,40,Hardcoded 1.3x margin only
+Component_Selection,MOSFETs,RDS_Optimization,1,PARTIAL,0,2024-11-01,Linear_Penalty,30,Simple linear scoring only
+Component_Selection,MOSFETs,Gate_Charge_Analysis,0,NOT_STARTED,0,2024-11-01,None,0,No gate charge optimization
+Component_Selection,MOSFETs,Thermal_Considerations,0,NOT_STARTED,0,2024-11-01,None,0,No thermal analysis
+Component_Selection,Capacitors,Document_Analysis,0,NOT_STARTED,0,2024-11-01,None,0,No document analysis implemented
+Component_Selection,Capacitors,Voltage_Derating,1,PARTIAL,0,2024-11-01,Fixed_1.2x_Margin,40,Hardcoded 1.2x margin only
+Component_Selection,Capacitors,ESR_Optimization,1,PARTIAL,0,2024-11-01,Basic_Penalty,30,Simple ESR penalty only
+Component_Selection,Capacitors,Ripple_Current_Analysis,0,NOT_STARTED,0,2024-11-01,None,0,No ripple current consideration
+Component_Selection,Capacitors,Temperature_Coefficient,0,NOT_STARTED,0,2024-11-01,None,0,No temp coefficient analysis
+Component_Selection,Capacitors,Type_Selection_Logic,0,NOT_STARTED,0,2024-11-01,None,0,No MLCC vs Electrolytic logic
+Data_Management,Component_Library,CSV_Loading,3,COMPLETE,0,2024-11-01,Dynamic_Reload,100,Loads from CSV with fallbacks
+Data_Management,Component_Library,Data_Validation,2,PARTIAL,0,2024-11-01,Basic_Type_Check,60,Basic validation only
+Data_Management,Design_Heuristics,Document_Detection,3,COMPLETE,1,2024-11-01,Multi_Format_Support,90,Supports docx pdf txt md
+Data_Management,Design_Heuristics,Auto_Update_Tracking,1,IN_PROGRESS,0,2024-11-01,Manual_Trigger,20,Manual refresh only
+User_Interface,Component_Display,Heuristics_Visualization,2,PARTIAL,1,2024-11-01,Inductor_Only,50,Shows heuristics for inductors only
+User_Interface,Component_Display,Score_Explanation,1,PARTIAL,0,2024-11-01,Basic_Reasoning,40,Basic reasoning text only
+User_Interface,Navigation,Circuit_Selection,3,COMPLETE,0,2024-11-01,Radio_Button_Nav,100,Clean navigation interface
+User_Interface,Navigation,Component_Library_Access,3,COMPLETE,0,2024-11-01,Top_Right_Button,100,Easy access to library

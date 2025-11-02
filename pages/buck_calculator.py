@@ -114,10 +114,22 @@ def show():
         # Calculate current
         max_current = inputs.p_out_max / inputs.v_out_min
         
-        # Get suggestions
-        mosfet_suggestions = suggest_mosfets(inputs.v_in_max, max_current)
-        output_cap_suggestions = suggest_capacitors(results.output_capacitance * 1e6, inputs.v_out_max)
-        inductor_suggestions = suggest_inductors(results.inductance * 1e6, max_current)
+        # Get suggestions with enhanced heuristics
+        mosfet_suggestions = suggest_mosfets(
+            max_voltage=inputs.v_in_max, 
+            max_current=max_current,
+            frequency_hz=switching_freq
+        )
+        output_cap_suggestions = suggest_capacitors(
+            required_capacitance_uf=results.output_capacitance * 1e6, 
+            max_voltage=inputs.v_out_max,
+            frequency_hz=switching_freq
+        )
+        inductor_suggestions = suggest_inductors(
+            required_inductance_uh=results.inductance * 1e6, 
+            max_current=max_current,
+            frequency_hz=switching_freq
+        )
         
         # Display in tabs
         tab1, tab2, tab3 = st.tabs(["💻 MOSFETs", "🔋 Output Capacitors", "🧲 Inductors"])
@@ -135,6 +147,12 @@ def show():
                         with col2:
                             st.info(mosfet.efficiency_range)
                         st.caption(f"💡 **Why:** {suggestion.reason}")
+                        
+                        # Show applied heuristics if available
+                        if hasattr(suggestion, 'heuristics_applied') and suggestion.heuristics_applied:
+                            st.markdown("**📋 Applied Design Heuristics:**")
+                            for heuristic in suggestion.heuristics_applied[:3]:  # Show top 3
+                                st.markdown(f"- {heuristic}")
             else:
                 st.warning("No suitable MOSFETs found for these specifications")
         
@@ -158,5 +176,11 @@ def show():
                         st.markdown(f"**Inductance:** {ind.inductance}µH | **Current:** {ind.current}A")
                         st.markdown(f"**DCR:** {ind.dcr}mΩ | **Isat:** {ind.sat_current}A | **Package:** {ind.package}")
                         st.caption(f"💡 **Why:** {suggestion.reason}")
+                        
+                        # Show applied heuristics if available
+                        if hasattr(suggestion, 'heuristics_applied') and suggestion.heuristics_applied:
+                            st.markdown("**📋 Applied Design Heuristics:**")
+                            for heuristic in suggestion.heuristics_applied[:3]:  # Show top 3
+                                st.markdown(f"- {heuristic}")
             else:
                 st.warning("No suitable inductors found for these specifications")
