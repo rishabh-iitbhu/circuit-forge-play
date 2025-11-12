@@ -373,8 +373,8 @@ def suggest_inductors(required_inductance_uh: float, max_current: float, frequen
         applied_heuristics.append(f"⚠️ Using default algorithm (heuristics error: {str(e)[:50]})")
     
     # Dynamic safety margins based on heuristics
-    current_margin = 1.3  # Default 30% margin
-    inductance_tolerance = 0.5  # Default 50% tolerance
+    current_margin = 1.2  # More realistic 20% margin (was 30%)
+    inductance_tolerance = 4.0  # Allow wide range for practical component selection (5x above/below calculated value)
     
     # Analyze heuristics for specific margin recommendations
     if heuristics_analysis and heuristics_analysis['selection_criteria']:
@@ -410,17 +410,33 @@ def suggest_inductors(required_inductance_uh: float, max_current: float, frequen
                         except:
                             pass
     
+    # Debug: Log the filtering process
+    debug_log = []
+    debug_log.append(f"🔍 Starting inductor search: {len(INDUCTOR_LIBRARY)} total inductors")
+    debug_log.append(f"🎯 Requirements: {required_inductance_uh:.1f}µH, {max_current:.2f}A max, {frequency_hz/1000:.0f}kHz")
+    debug_log.append(f"📏 Margins: current={current_margin:.1f}x, inductance_tolerance={inductance_tolerance:.1f}")
+    
     for inductor in INDUCTOR_LIBRARY:
+        debug_info = f"Checking {inductor.part_number}: {inductor.inductance}µH, {inductor.current}A, Isat={inductor.sat_current}A"
+        
         # Check current rating with updated margin
-        if inductor.current < max_current * current_margin:
+        required_current = max_current * current_margin
+        if inductor.current < required_current:
+            debug_log.append(f"❌ {debug_info} - Current too low ({inductor.current}A < {required_current:.2f}A)")
             continue
-        if inductor.sat_current < max_current * current_margin * 1.2:
+        if inductor.sat_current < max_current * current_margin:
+            debug_log.append(f"❌ {debug_info} - Saturation current too low ({inductor.sat_current}A < {max_current * current_margin * 1.2:.2f}A)")
             continue
         
         # Check if inductance is suitable with updated tolerance
         ind_ratio = inductor.inductance / required_inductance_uh
-        if ind_ratio < (1 - inductance_tolerance) or ind_ratio > (1 + inductance_tolerance):
+        min_acceptable = 1 - inductance_tolerance
+        max_acceptable = 1 + inductance_tolerance
+        if ind_ratio < min_acceptable or ind_ratio > max_acceptable:
+            debug_log.append(f"❌ {debug_info} - Inductance mismatch (ratio {ind_ratio:.2f}, need {min_acceptable:.2f}-{max_acceptable:.2f})")
             continue
+        
+        debug_log.append(f"✅ {debug_info} - PASSED all filters")
         
         # Calculate suitability score with heuristics
         score = 100.0

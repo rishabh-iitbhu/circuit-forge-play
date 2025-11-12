@@ -5,12 +5,81 @@ Orchestrates the complete simulation workflow from component calculation to resu
 
 import streamlit as st
 from typing import Dict, Any, Optional, Tuple
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import numpy as np
+import sys
+import os
+import subprocess
+
+def install_plotly():
+    """
+    Attempt to install plotly in the current environment
+    """
+    try:
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'plotly'])
+        return True
+    except Exception:
+        return False
+
+def check_plotly_availability():
+    """
+    Comprehensive plotly availability check with detailed diagnostics
+    """
+    try:
+        # Add current directory to path to ensure proper imports
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_dir)
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+        
+        # Try importing plotly
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+        
+        # Test basic functionality
+        test_fig = go.Figure()
+        test_fig.add_trace(go.Scatter(x=[1, 2], y=[1, 2]))
+        
+        return True, go, make_subplots, None
+        
+    except ImportError as e:
+        return False, None, None, f"Import error: {str(e)}"
+    except Exception as e:
+        return False, None, None, f"Plotly test failed: {str(e)}"
+
+# Initial plotly check
+PLOTLY_AVAILABLE, go, make_subplots, plotly_error = check_plotly_availability()
 
 from .ltspice_interface import get_simulator
 from .netlist_generator import create_buck_simulation
+
+def validate_simulation_inputs(circuit_params: Dict[str, float], calculated_components: Dict[str, float]) -> Dict[str, Any]:
+    """
+    Validate simulation inputs before running
+    """
+    try:
+        # Check circuit parameters
+        required_circuit_params = ['input_voltage', 'output_voltage', 'load_current', 'switching_frequency']
+        for param in required_circuit_params:
+            if param not in circuit_params or circuit_params[param] <= 0:
+                return {'valid': False, 'error': f'Invalid circuit parameter: {param}'}
+        
+        # Check calculated components
+        required_components = ['inductance', 'output_capacitance']
+        for component in required_components:
+            if component not in calculated_components or calculated_components[component] <= 0:
+                return {'valid': False, 'error': f'Invalid component value: {component}'}
+        
+        # Sanity checks
+        if circuit_params['output_voltage'] >= circuit_params['input_voltage']:
+            return {'valid': False, 'error': 'Output voltage must be less than input voltage for Buck converter'}
+        
+        if circuit_params['switching_frequency'] < 1000 or circuit_params['switching_frequency'] > 10e6:
+            return {'valid': False, 'error': 'Switching frequency must be between 1kHz and 10MHz'}
+        
+        return {'valid': True, 'error': None}
+        
+    except Exception as e:
+        return {'valid': False, 'error': f'Validation error: {str(e)}'}
 
 class SimulationService:
     """
@@ -173,16 +242,74 @@ class SimulationService:
         except:
             return "Unknown"
 
-def create_simulation_plots(results: Dict[str, Any]) -> go.Figure:
+def create_simulation_plots_v2(results: Dict[str, Any]) -> Any:
     """
-    Create comprehensive plots of simulation results
+    Create comprehensive plots of simulation results with robust error handling
     """
     
+    # Validate input data first
+    if not results or 'raw_results' not in results:
+        st.error("❌ No simulation data available for plotting")
+        return None
+    
     raw_results = results['raw_results']
+    
+    # Check if we have the required data
+    required_keys = ['time', 'voltages', 'currents']
+    missing_keys = [key for key in required_keys if key not in raw_results]
+    if missing_keys:
+        st.error(f"❌ Missing simulation data: {', '.join(missing_keys)}")
+        return None
+    
+    st.info("🔄 Loading visualization system...")
+    
+    # Runtime plotly availability check with detailed diagnostics
+    plotly_available, go_runtime, make_subplots_runtime, error_msg = check_plotly_availability()
+    
+    if not plotly_available:
+        st.error("❌ Plotly visualization unavailable")
+        st.code(f"Error: {error_msg}")
+        
+        # Offer auto-installation
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button("� Try Auto-Install Plotly", type="primary"):
+                with st.spinner("Installing plotly..."):
+                    if install_plotly():
+                        st.success("✅ Plotly installed! Please refresh the page.")
+                        st.balloons()
+                    else:
+                        st.error("❌ Auto-installation failed. Please install manually.")
+        
+        with col2:
+            st.info("💡 **Manual install:**\n`pip install plotly`")
+        
+        # Show alternative text-based results
+        st.subheader("📊 Text-Based Results Summary")
+        try:
+            time_data = raw_results['time']
+            voltage_data = raw_results['voltages'].get('V(out)', [])
+            if len(voltage_data) > 0:
+                avg_voltage = np.mean(voltage_data)
+                min_voltage = np.min(voltage_data)
+                max_voltage = np.max(voltage_data)
+                ripple = max_voltage - min_voltage
+                st.write(f"• **Average Output Voltage**: {avg_voltage:.3f}V")
+                st.write(f"• **Voltage Range**: {min_voltage:.3f}V to {max_voltage:.3f}V")
+                st.write(f"• **Voltage Ripple**: {ripple*1000:.1f}mV")
+                st.write(f"• **Simulation Duration**: {max(time_data)*1000:.2f}ms")
+                st.write(f"• **Data Points**: {len(voltage_data)} samples")
+        except Exception as e:
+            st.write("Unable to extract summary data")
+        
+        return None
+    
+    # Success message
+    st.success("✅ Plotly loaded successfully - Interactive charts available!")
     time_ms = np.array(raw_results['time']) * 1000  # Convert to ms
     
     # Create subplots
-    fig = make_subplots(
+    fig = make_subplots_runtime(
         rows=3, cols=1,
         subplot_titles=('Output Voltage', 'Inductor Current', 'Switch Voltage'),
         vertical_spacing=0.08,
@@ -191,7 +318,7 @@ def create_simulation_plots(results: Dict[str, Any]) -> go.Figure:
     
     # Output voltage plot
     fig.add_trace(
-        go.Scatter(
+        go_runtime.Scatter(
             x=time_ms,
             y=raw_results['voltages']['V(out)'],
             name='Output Voltage',
@@ -213,7 +340,7 @@ def create_simulation_plots(results: Dict[str, Any]) -> go.Figure:
     
     # Inductor current plot
     fig.add_trace(
-        go.Scatter(
+        go_runtime.Scatter(
             x=time_ms,
             y=raw_results['currents']['I(L1)'],
             name='Inductor Current',
@@ -224,7 +351,7 @@ def create_simulation_plots(results: Dict[str, Any]) -> go.Figure:
     
     # Switch voltage plot
     fig.add_trace(
-        go.Scatter(
+        go_runtime.Scatter(
             x=time_ms,
             y=raw_results['voltages']['V(sw)'],
             name='Switch Voltage',
@@ -286,11 +413,42 @@ def show_simulation_button(circuit_params: Dict[str, float],
 def run_and_display_simulation(circuit_params: Dict[str, float],
                              calculated_components: Dict[str, float]) -> None:
     """
-    Run simulation and display results in Streamlit
+    Run simulation and display results in Streamlit with comprehensive error handling
     """
     
+    # Clear Streamlit cache to ensure fresh imports
+    try:
+        st.cache_data.clear()
+    except:
+        pass  # In case cache_data doesn't exist in older versions
+    
+    # Input validation
+    st.info("🔍 Validating simulation parameters...")
+    validation = validate_simulation_inputs(circuit_params, calculated_components)
+    if not validation['valid']:
+        st.error(f"❌ **Validation Failed**: {validation['error']}")
+        return
+    
+    st.success("✅ Parameters validated successfully")
+    
+    # Add debugging info
+    with st.expander("🔧 Debug Info - Simulation Parameters"):
+        st.json({
+            "Circuit Parameters": circuit_params,
+            "Calculated Components": calculated_components,
+            "Python Executable": sys.executable
+        })
+    
+    # Add a rerun button to force cache clearing
+    if st.button("🔄 Force Refresh (if plots not showing)", type="secondary"):
+        st.rerun()
+    
     # Initialize simulation service
-    sim_service = SimulationService()
+    try:
+        sim_service = SimulationService()
+    except Exception as e:
+        st.error(f"❌ **Simulation Service Error**: {str(e)}")
+        return
     
     # Show progress
     with st.spinner("🔄 Running circuit simulation..."):
@@ -298,15 +456,39 @@ def run_and_display_simulation(circuit_params: Dict[str, float],
         progress_bar = st.progress(0)
         progress_bar.progress(25, text="Generating netlist...")
         
-        # Run simulation
-        results = sim_service.run_buck_simulation(
-            circuit_params,
-            calculated_components
-        )
-        
-        progress_bar.progress(75, text="Analyzing results...")
-        progress_bar.progress(100, text="Complete!")
-        progress_bar.empty()
+        try:
+            # Run simulation
+            results = sim_service.run_buck_simulation(
+                circuit_params,
+                calculated_components
+            )
+            
+            progress_bar.progress(75, text="Analyzing results...")
+            
+            # Validate results
+            if not results or not isinstance(results, dict):
+                raise ValueError("Invalid simulation results returned")
+            
+            progress_bar.progress(100, text="Complete!")
+            progress_bar.empty()
+            
+        except Exception as e:
+            progress_bar.empty()
+            st.error(f"❌ **Simulation Failed**: {str(e)}")
+            st.info("💡 **Troubleshooting:**")
+            st.write("• Check your input parameters")
+            st.write("• Ensure component values are reasonable")
+            st.write("• Try different switching frequency")
+            
+            # Show debug information
+            with st.expander("🔍 Error Details"):
+                st.code(f"Error: {str(e)}")
+                st.write("**Circuit Parameters:**")
+                st.json(circuit_params)
+                st.write("**Component Values:**")
+                st.json(calculated_components)
+            
+            return
     
     # Display results
     if results['success']:
@@ -356,8 +538,11 @@ def run_and_display_simulation(circuit_params: Dict[str, float],
                 )
         
         # Create and show plots
-        fig = create_simulation_plots(results)
-        st.plotly_chart(fig, use_container_width=True)
+        fig = create_simulation_plots_v2(results)
+        if fig is not None:
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("📊 Visualization requires plotly library. Simulation data is available in the analysis metrics above.")
         
         # Show netlist in expander
         with st.expander("📄 View Generated Netlist"):

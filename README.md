@@ -1,24 +1,16 @@
-# ⚡ Circuit Designer Pro# Circuit Designer Pro - Streamlit Version
+# ⚡ Circuit Forge Pro
 
+A sophisticated **Streamlit-based** web application for power electronics circuit design with AI-powered component selection, LTspice simulation integration, and intelligent design heuristics.
 
+## 🌟 Features
 
-A sophisticated **Streamlit-based** web application for power electronics circuit design with AI-powered component selection and design heuristics.A Python + Streamlit implementation of the Circuit Forge circuit design tool. This application helps design PFC (Power Factor Correction) and Buck converter circuits with AI-powered component calculations.
-
-
-
-## 🌟 Features## Features
-
-
-
-- **🔌 Buck Converter Calculator** - Complete design calculations with component recommendations- **PFC Circuit Designer**: Calculate component values for Power Factor Correction circuits
-
-- **📚 Component Library** - Extensive database of MOSFETs, capacitors, and inductors- **Buck Converter Designer**: Calculate component values for DC-DC Buck converters
-
-- **🤖 AI-Powered Suggestions** - Intelligent component selection using design heuristics- **Component Library**: Browse extensive database of MOSFETs, capacitors, and inductors
-
-- **📊 Interactive Interface** - Clean, professional Streamlit UI- **Smart Component Suggestions**: Get recommendations based on your circuit requirements
-
-- **☁️ Cloud Deployment** - Deployed on Streamlit Cloud for instant access- **Real-time Calculations**: Instant component value calculations based on input parameters
+- **🔌 Buck Converter Calculator** - Complete design calculations with component recommendations
+- **📊 PFC Circuit Designer** - Power Factor Correction circuit calculations
+- **📚 Component Library** - Extensive database of MOSFETs, capacitors, and inductors with real part numbers
+- **🤖 AI-Powered Suggestions** - Intelligent component selection using design heuristics and document analysis
+- **⚡ LTspice Simulation** - Integrated SPICE simulation with interactive plotly visualization
+- **📊 Interactive Interface** - Clean, professional Streamlit UI with real-time calculations
+- **☁️ Cloud Ready** - Optimized for Streamlit Cloud deployment
 
 
 
