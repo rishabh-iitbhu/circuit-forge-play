@@ -131,6 +131,28 @@ def main():
                 if st.button("🔬 Simulation Demo", type="secondary", use_container_width=True):
                     st.session_state.page = "Simulation Demo"
         
+        # Component Source Selection
+        st.markdown("---")
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            component_source = st.radio(
+                "🔧 Component Data Source",
+                ["📊 Local Database", "🌐 Web Search (Mouser + Digikey)"],
+                horizontal=True,
+                help="Choose between local component database or live web search from major distributors"
+            )
+            
+            # Store selection in session state
+            st.session_state.component_source = "web" if "Web Search" in component_source else "local"
+            
+            # Show additional info based on selection
+            if st.session_state.component_source == "web":
+                st.info("🌐 **Web Search Mode**: Search live inventory from Mouser and Digikey for current pricing and availability", icon="ℹ️")
+            else:
+                st.info("📊 **Local Database Mode**: Use curated component database with design heuristics", icon="ℹ️")
+        
+        st.markdown("---")
+        
         # Main navigation for circuit types only
         selected = st.radio(
             "Select Circuit Type",

@@ -23,7 +23,7 @@ class ComponentSuggestion:
             self.heuristics_applied = []
 
 
-def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float = 65000) -> List[ComponentSuggestion]:
+def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float = 65000, use_web_search: bool = False) -> List[ComponentSuggestion]:
     """
     Suggest MOSFETs based on voltage and current requirements
     Now incorporates design heuristics from documents
@@ -32,10 +32,60 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         max_voltage: Maximum voltage requirement (V)
         max_current: Maximum current requirement (A)
         frequency_hz: Switching frequency (Hz) for improved analysis
+        use_web_search: If True, search web for components instead of local database
         
     Returns:
         List of MOSFET suggestions sorted by suitability with applied heuristics
     """
+    # Handle web search mode
+    if use_web_search:
+        try:
+            from lib.web_component_scraper import WebComponentScraper, create_component_search_terms
+            
+            # Create circuit parameters for search
+            circuit_params = {
+                'vin': max_voltage,
+                'iout': max_current,
+                'frequency': frequency_hz
+            }
+            
+            # Search for MOSFETs
+            scraper = WebComponentScraper()
+            search_terms = create_component_search_terms(circuit_params)
+            web_results = scraper.search_components(search_terms['mosfet'], 'mosfet')
+            
+            # Convert web results to ComponentSuggestion format
+            suggestions = []
+            for distributor, components in web_results.items():
+                for comp in components:
+                    # Create a mock MOSFET object for compatibility
+                    mock_mosfet = type('MOSFET', (), {
+                        'part_number': comp.part_number,
+                        'manufacturer': comp.manufacturer,
+                        'vds_max': f"See datasheet",
+                        'id_max': f"See datasheet", 
+                        'rds_on': f"See datasheet",
+                        'package': comp.package or "See datasheet",
+                        'price': comp.price,
+                        'availability': comp.availability,
+                        'distributor': comp.distributor
+                    })()
+                    
+                    suggestion = ComponentSuggestion(
+                        component=mock_mosfet,
+                        reason=f"🌐 Found on {comp.distributor}: {comp.description}",
+                        score=5.0,  # High score for web results
+                        heuristics_applied=[f"Web search from {comp.distributor}"]
+                    )
+                    suggestions.append(suggestion)
+            
+            return suggestions[:10]  # Return top 10 web results
+            
+        except Exception as e:
+            # Fallback to local database if web search fails
+            import streamlit as st
+            st.warning(f"Web search failed: {e}. Using local database.")
+    
     suggestions = []
     
     # Try to load and analyze design heuristics
@@ -176,7 +226,7 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
     return suggestions[:5]  # Return top 5
 
 
-def suggest_capacitors(required_capacitance_uf: float, max_voltage: float, frequency_hz: float = 65000) -> List[ComponentSuggestion]:
+def suggest_capacitors(required_capacitance_uf: float, max_voltage: float, frequency_hz: float = 65000, use_web_search: bool = False) -> List[ComponentSuggestion]:
     """
     Suggest capacitors based on capacitance and voltage requirements
     Now incorporates design heuristics from documents
@@ -185,10 +235,54 @@ def suggest_capacitors(required_capacitance_uf: float, max_voltage: float, frequ
         required_capacitance_uf: Required capacitance (µF)
         max_voltage: Maximum voltage requirement (V)
         frequency_hz: Switching frequency (Hz) for improved analysis
+        use_web_search: If True, search web for components instead of local database
         
     Returns:
         List of capacitor suggestions sorted by suitability with applied heuristics
     """
+    # Handle web search mode
+    if use_web_search:
+        try:
+            from lib.web_component_scraper import WebComponentScraper, create_component_search_terms
+            
+            circuit_params = {
+                'vout': max_voltage,
+                'frequency': frequency_hz
+            }
+            
+            scraper = WebComponentScraper()
+            search_terms = create_component_search_terms(circuit_params)
+            web_results = scraper.search_components(search_terms['output_capacitor'], 'output_capacitor')
+            
+            suggestions = []
+            for distributor, components in web_results.items():
+                for comp in components:
+                    mock_capacitor = type('Capacitor', (), {
+                        'part_number': comp.part_number,
+                        'manufacturer': comp.manufacturer,
+                        'capacitance_uf': f"{required_capacitance_uf:.1f}µF (target)",
+                        'voltage_rating': f"≥{max_voltage}V",
+                        'dielectric': "See datasheet",
+                        'package': comp.package or "See datasheet",
+                        'price': comp.price,
+                        'availability': comp.availability,
+                        'distributor': comp.distributor
+                    })()
+                    
+                    suggestion = ComponentSuggestion(
+                        component=mock_capacitor,
+                        reason=f"🌐 Found on {comp.distributor}: {comp.description}",
+                        score=5.0,
+                        heuristics_applied=[f"Web search from {comp.distributor}"]
+                    )
+                    suggestions.append(suggestion)
+            
+            return suggestions[:10]
+            
+        except Exception as e:
+            import streamlit as st
+            st.warning(f"Web search failed: {e}. Using local database.")
+    
     suggestions = []
     
     # Try to load and analyze design heuristics
@@ -345,7 +439,7 @@ def suggest_capacitors(required_capacitance_uf: float, max_voltage: float, frequ
 
 
 def suggest_input_capacitors(required_capacitance_uf: float, max_voltage: float, 
-                            ripple_current_a: float, frequency_hz: float = 65000) -> List[ComponentSuggestion]:
+                            ripple_current_a: float, frequency_hz: float = 65000, use_web_search: bool = False) -> List[ComponentSuggestion]:
     """
     Suggest input capacitors based on capacitance, voltage, and ripple current requirements
     Incorporates design heuristics from Input Capacitor Selection document
@@ -355,10 +449,55 @@ def suggest_input_capacitors(required_capacitance_uf: float, max_voltage: float,
         max_voltage: Maximum input voltage (V) 
         ripple_current_a: Estimated RMS ripple current (A)
         frequency_hz: Switching frequency (Hz) for improved analysis
+        use_web_search: If True, search web for components instead of local database
         
     Returns:
         List of input capacitor suggestions sorted by suitability with applied heuristics
     """
+    # Handle web search mode
+    if use_web_search:
+        try:
+            from lib.web_component_scraper import WebComponentScraper, create_component_search_terms
+            
+            circuit_params = {
+                'vin': max_voltage,
+                'frequency': frequency_hz
+            }
+            
+            scraper = WebComponentScraper()
+            search_terms = create_component_search_terms(circuit_params)
+            web_results = scraper.search_components(search_terms['input_capacitor'], 'input_capacitor')
+            
+            suggestions = []
+            for distributor, components in web_results.items():
+                for comp in components:
+                    mock_input_cap = type('InputCapacitor', (), {
+                        'part_number': comp.part_number,
+                        'manufacturer': comp.manufacturer,
+                        'capacitance_uf': f"{required_capacitance_uf:.1f}µF (target)",
+                        'voltage_rating': f"≥{max_voltage}V",
+                        'ripple_current_a': f"≥{ripple_current_a:.2f}A",
+                        'dielectric': "See datasheet",
+                        'package': comp.package or "See datasheet",
+                        'price': comp.price,
+                        'availability': comp.availability,
+                        'distributor': comp.distributor
+                    })()
+                    
+                    suggestion = ComponentSuggestion(
+                        component=mock_input_cap,
+                        reason=f"🌐 Found on {comp.distributor}: {comp.description}",
+                        score=5.0,
+                        heuristics_applied=[f"Web search from {comp.distributor}"]
+                    )
+                    suggestions.append(suggestion)
+            
+            return suggestions[:10]
+            
+        except Exception as e:
+            import streamlit as st
+            st.warning(f"Web search failed: {e}. Using local database.")
+    
     suggestions = []
     
     # Import heuristics analyzer
@@ -459,7 +598,7 @@ def suggest_input_capacitors(required_capacitance_uf: float, max_voltage: float,
     return suggestions[:5]  # Return top 5
 
 
-def suggest_inductors(required_inductance_uh: float, max_current: float, frequency_hz: float = 65000) -> List[ComponentSuggestion]:
+def suggest_inductors(required_inductance_uh: float, max_current: float, frequency_hz: float = 65000, use_web_search: bool = False) -> List[ComponentSuggestion]:
     """
     Suggest inductors based on inductance and current requirements
     Now incorporates design heuristics from documents
@@ -468,10 +607,56 @@ def suggest_inductors(required_inductance_uh: float, max_current: float, frequen
         required_inductance_uh: Required inductance (µH)
         max_current: Maximum current requirement (A)
         frequency_hz: Switching frequency (Hz) for improved analysis
+        use_web_search: If True, search web for components instead of local database
         
     Returns:
         List of inductor suggestions sorted by suitability with applied heuristics
     """
+    # Handle web search mode
+    if use_web_search:
+        try:
+            from lib.web_component_scraper import WebComponentScraper, create_component_search_terms
+            
+            circuit_params = {
+                'vin': 12,  # Default assumption for search
+                'vout': 5,  # Default assumption 
+                'iout': max_current,
+                'frequency': frequency_hz
+            }
+            
+            scraper = WebComponentScraper()
+            search_terms = create_component_search_terms(circuit_params)
+            web_results = scraper.search_components(search_terms['inductor'], 'inductor')
+            
+            suggestions = []
+            for distributor, components in web_results.items():
+                for comp in components:
+                    mock_inductor = type('Inductor', (), {
+                        'part_number': comp.part_number,
+                        'manufacturer': comp.manufacturer,
+                        'inductance_uh': f"{required_inductance_uh:.1f}µH (target)",
+                        'current_rating_a': f"≥{max_current:.2f}A",
+                        'dc_resistance': "See datasheet",
+                        'package': comp.package or "See datasheet",
+                        'price': comp.price,
+                        'availability': comp.availability,
+                        'distributor': comp.distributor
+                    })()
+                    
+                    suggestion = ComponentSuggestion(
+                        component=mock_inductor,
+                        reason=f"🌐 Found on {comp.distributor}: {comp.description}",
+                        score=5.0,
+                        heuristics_applied=[f"Web search from {comp.distributor}"]
+                    )
+                    suggestions.append(suggestion)
+            
+            return suggestions[:10]
+            
+        except Exception as e:
+            import streamlit as st
+            st.warning(f"Web search failed: {e}. Using local database.")
+    
     suggestions = []
     
     # Try to load and analyze design heuristics

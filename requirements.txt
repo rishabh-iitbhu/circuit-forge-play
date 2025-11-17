@@ -4,3 +4,5 @@ numpy>=1.21.0
 plotly>=5.14.0
 python-docx>=0.8.11
 openpyxl>=3.0.0
+requests>=2.25.1
+beautifulsoup4>=4.9.0

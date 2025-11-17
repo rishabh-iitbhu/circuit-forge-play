@@ -278,21 +278,27 @@ def show():
         # Calculate current
         max_current = inputs.p_out_max / inputs.v_out_min
         
+        # Check component source preference
+        use_web_search = st.session_state.get('component_source', 'local') == 'web'
+        
         # Get suggestions with enhanced heuristics
         mosfet_suggestions = suggest_mosfets(
             max_voltage=inputs.v_in_max, 
             max_current=max_current,
-            frequency_hz=switching_freq
+            frequency_hz=switching_freq,
+            use_web_search=use_web_search
         )
         output_cap_suggestions = suggest_capacitors(
             required_capacitance_uf=results.output_capacitance * 1e6, 
             max_voltage=inputs.v_out_max,
-            frequency_hz=switching_freq
+            frequency_hz=switching_freq,
+            use_web_search=use_web_search
         )
         inductor_suggestions = suggest_inductors(
             required_inductance_uh=results.inductance * 1e6, 
             max_current=max_current,
-            frequency_hz=switching_freq
+            frequency_hz=switching_freq,
+            use_web_search=use_web_search
         )
         
         # Get input capacitor suggestions
@@ -302,7 +308,8 @@ def show():
             required_capacitance_uf=results.input_capacitance * 1e6,
             max_voltage=inputs.v_in_max,
             ripple_current_a=input_ripple_current,
-            frequency_hz=switching_freq
+            frequency_hz=switching_freq,
+            use_web_search=use_web_search
         )
         
         # Enhanced debug information for inductor selection
