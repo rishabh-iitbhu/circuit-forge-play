@@ -84,7 +84,7 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         except Exception as e:
             # Fallback to local database if web search fails
             import streamlit as st
-            st.warning(f"Web search failed: {e}. Using local database.")
+            st.warning(f"🌐➡️📊 Web search unavailable ({str(e)[:50]}...). Using local component database with design heuristics.")
     
     suggestions = []
     

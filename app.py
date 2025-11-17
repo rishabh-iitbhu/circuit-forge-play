@@ -147,7 +147,7 @@ def main():
             
             # Show additional info based on selection
             if st.session_state.component_source == "web":
-                st.info("🌐 **Web Search Mode**: Search live inventory from Mouser and Digikey for current pricing and availability", icon="ℹ️")
+                st.info("🌐 **Web Search Mode**: Search live inventory from Mouser (Digikey temporarily disabled due to rate limits) for current pricing and availability", icon="ℹ️")
             else:
                 st.info("📊 **Local Database Mode**: Use curated component database with design heuristics", icon="ℹ️")
         

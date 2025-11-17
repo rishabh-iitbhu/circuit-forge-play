@@ -41,12 +41,18 @@ class WebComponentScraper:
     def __init__(self):
         self.session = requests.Session() if WEB_SCRAPING_AVAILABLE else None
         self.last_request_time = 0
-        self.min_request_interval = 1.0  # Minimum seconds between requests
+        self.min_request_interval = 3.0  # Increased to 3 seconds between requests
+        self.max_retries = 2  # Maximum retry attempts
         
-        # Set user agent to avoid blocking
+        # Set more realistic headers to avoid blocking
         if self.session:
             self.session.headers.update({
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Cache-Control': 'no-cache'
             })
     
     def _rate_limit(self):
@@ -54,8 +60,46 @@ class WebComponentScraper:
         current_time = time.time()
         time_since_last = current_time - self.last_request_time
         if time_since_last < self.min_request_interval:
-            time.sleep(self.min_request_interval - time_since_last)
+            sleep_time = self.min_request_interval - time_since_last
+            time.sleep(sleep_time)
         self.last_request_time = time.time()
+    
+    def _make_request_with_retry(self, url, timeout=15):
+        """Make HTTP request with retry logic for rate limiting"""
+        for attempt in range(self.max_retries + 1):
+            try:
+                self._rate_limit()
+                response = self.session.get(url, timeout=timeout)
+                
+                if response.status_code == 429:  # Too Many Requests
+                    if attempt < self.max_retries:
+                        wait_time = (attempt + 1) * 5  # Exponential backoff: 5s, 10s
+                        st.warning(f"Rate limited by server. Waiting {wait_time} seconds before retry {attempt + 1}/{self.max_retries}...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        raise Exception(f"Rate limited after {self.max_retries} retries")
+                
+                response.raise_for_status()
+                return response
+                
+            except requests.exceptions.Timeout:
+                if attempt < self.max_retries:
+                    st.warning(f"Request timeout. Retrying {attempt + 1}/{self.max_retries}...")
+                    time.sleep(2)
+                    continue
+                else:
+                    raise Exception("Request timed out after retries")
+            
+            except requests.exceptions.RequestException as e:
+                if attempt < self.max_retries:
+                    st.warning(f"Request failed: {e}. Retrying {attempt + 1}/{self.max_retries}...")
+                    time.sleep(2)
+                    continue
+                else:
+                    raise e
+        
+        raise Exception("Max retries exceeded")
     
     def search_mouser(self, search_term: str, component_type: str) -> List[WebComponent]:
         """
@@ -72,13 +116,10 @@ class WebComponentScraper:
             return []
         
         try:
-            self._rate_limit()
-            
             # Mouser search URL
             search_url = f"https://www.mouser.com/c/?q={search_term.replace(' ', '%20')}"
             
-            response = self.session.get(search_url, timeout=10)
-            response.raise_for_status()
+            response = self._make_request_with_retry(search_url)
             
             soup = BeautifulSoup(response.content, 'html.parser')
             components = []
@@ -119,6 +160,7 @@ class WebComponentScraper:
     def search_digikey(self, search_term: str, component_type: str) -> List[WebComponent]:
         """
         Search Digikey.com for components
+        Note: Currently disabled due to aggressive rate limiting
         
         Args:
             search_term: Component search term
@@ -130,14 +172,17 @@ class WebComponentScraper:
         if not WEB_SCRAPING_AVAILABLE:
             return []
         
+        # Temporarily disable Digikey due to aggressive rate limiting
+        st.info("🔄 Digikey search temporarily disabled due to rate limiting. Using Mouser results.")
+        return []
+        
+        # Keep the original implementation commented for future use
+        """
         try:
-            self._rate_limit()
-            
-            # Digikey search URL
+            # Use more conservative search approach for Digikey
             search_url = f"https://www.digikey.com/en/products/filter/{component_type}?keywords={search_term.replace(' ', '%20')}"
             
-            response = self.session.get(search_url, timeout=10)
-            response.raise_for_status()
+            response = self._make_request_with_retry(search_url)
             
             soup = BeautifulSoup(response.content, 'html.parser')
             components = []
@@ -174,8 +219,9 @@ class WebComponentScraper:
             return components
             
         except Exception as e:
-            st.error(f"Error searching Digikey: {e}")
+            st.warning(f"Digikey search unavailable: {e}. Using Mouser only.")
             return []
+        """
     
     def search_components(self, search_term: str, component_type: str) -> Dict[str, List[WebComponent]]:
         """
@@ -199,12 +245,13 @@ class WebComponentScraper:
             mouser_results = self.search_mouser(search_term, component_type)
             if mouser_results:
                 results["Mouser"] = mouser_results
+            else:
+                st.warning("No results found on Mouser or search failed.")
         
-        # Search Digikey  
-        with st.spinner("Searching Digikey.com..."):
-            digikey_results = self.search_digikey(search_term, component_type)
-            if digikey_results:
-                results["Digikey"] = digikey_results
+        # Search Digikey (temporarily disabled due to rate limiting)
+        digikey_results = self.search_digikey(search_term, component_type)
+        if digikey_results:
+            results["Digikey"] = digikey_results
         
         return results
 
