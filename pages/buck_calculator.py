@@ -4,7 +4,7 @@ Buck Converter Calculator Page
 
 import streamlit as st
 from lib.calculations import CircuitCalculator, BuckInputs, validate_inputs
-from lib.component_suggestions import suggest_mosfets, suggest_capacitors, suggest_inductors
+from lib.component_suggestions import suggest_mosfets, suggest_capacitors, suggest_inductors, suggest_input_capacitors
 import os
 
 def get_component_ranges():
@@ -49,24 +49,26 @@ def get_component_ranges():
             'frequency': (50000, 1000000)
         }
 
-def check_component_availability(mosfet_suggestions, capacitor_suggestions, inductor_suggestions):
+def check_component_availability(mosfet_suggestions, input_cap_suggestions, output_cap_suggestions, inductor_suggestions):
     """
     Check if suitable components are available for simulation
     """
     try:
         # Check if we have at least one suggestion for each critical component
         has_mosfets = mosfet_suggestions and len(mosfet_suggestions) > 0
-        has_capacitors = capacitor_suggestions and len(capacitor_suggestions) > 0
+        has_input_caps = input_cap_suggestions and len(input_cap_suggestions) > 0
+        has_output_caps = output_cap_suggestions and len(output_cap_suggestions) > 0
         has_inductors = inductor_suggestions and len(inductor_suggestions) > 0
         
         # Debug output
         st.write(f"🔍 **Component Check:** MOSFETs: {len(mosfet_suggestions) if mosfet_suggestions else 0}, "
-                f"Capacitors: {len(capacitor_suggestions) if capacitor_suggestions else 0}, "
+                f"Input Caps: {len(input_cap_suggestions) if input_cap_suggestions else 0}, "
+                f"Output Caps: {len(output_cap_suggestions) if output_cap_suggestions else 0}, "
                 f"Inductors: {len(inductor_suggestions) if inductor_suggestions else 0}")
         
-        # For simulation, we need at least inductors and capacitors
-        # MOSFETs are less critical for basic simulation
-        return has_capacitors and has_inductors
+        # For simulation, we need at least inductors and output capacitors
+        # Input capacitors and MOSFETs are less critical for basic simulation
+        return has_output_caps and has_inductors
         
     except Exception as e:
         st.error(f"Error checking components: {e}")
@@ -293,6 +295,16 @@ def show():
             frequency_hz=switching_freq
         )
         
+        # Get input capacitor suggestions
+        # Estimate input ripple current (typical formula for Buck converter)
+        input_ripple_current = max_current * (results.duty_cycle_max * (1 - results.duty_cycle_max)) ** 0.5
+        input_cap_suggestions = suggest_input_capacitors(
+            required_capacitance_uf=results.input_capacitance * 1e6,
+            max_voltage=inputs.v_in_max,
+            ripple_current_a=input_ripple_current,
+            frequency_hz=switching_freq
+        )
+        
         # Enhanced debug information for inductor selection
         st.info(f"🔍 **Inductor Debug:** Required: {results.inductance * 1e6:.1f}µH, Max current: {max_current:.2f}A, "
                f"Switching freq: {switching_freq/1000:.0f}kHz, Found: {len(inductor_suggestions) if inductor_suggestions else 0} inductor(s)")
@@ -302,7 +314,7 @@ def show():
                f"Your requirements {'✅ match' if (220 <= results.inductance * 1e6 <= 10000 and max_current <= 4.5) else '❌ exceed'} available range.")
         
         # Display in tabs
-        tab1, tab2, tab3 = st.tabs(["💻 MOSFETs", "🔋 Output Capacitors", "🧲 Inductors"])
+        tab1, tab2, tab3, tab4 = st.tabs(["💻 MOSFETs", "� Input Capacitors", "📤 Output Capacitors", "🧲 Inductors"])
         
         with tab1:
             if mosfet_suggestions:
@@ -327,6 +339,41 @@ def show():
                 st.warning("No suitable MOSFETs found for these specifications")
         
         with tab2:
+            if input_cap_suggestions:
+                st.info(f"🔍 **Input Capacitor Analysis:** Required: {results.input_capacitance * 1e6:.1f}µF, "
+                       f"Max voltage: {inputs.v_in_max}V, Ripple current: {input_ripple_current:.2f}A")
+                
+                for idx, suggestion in enumerate(input_cap_suggestions):
+                    cap = suggestion.component
+                    with st.expander(f"#{idx+1} {cap.part_number} - {cap.manufacturer}", expanded=idx==0):
+                        col1, col2 = st.columns([2, 1])
+                        with col1:
+                            st.markdown(f"**Capacitance:** {cap.capacitance}µF | **Voltage:** {cap.voltage}V")
+                            st.markdown(f"**Category:** {cap.category} | **Dielectric:** {cap.dielectric}")
+                            st.markdown(f"**ESR:** {cap.esr}mΩ | **ESL:** {cap.esl}nH")
+                            if cap.ripple_rating > 0:
+                                st.markdown(f"**Ripple Rating:** {cap.ripple_rating}A")
+                            st.markdown(f"**Package:** {cap.package}")
+                        with col2:
+                            st.success(cap.availability.title())
+                            if cap.cost > 0:
+                                st.info(f"${cap.cost:.2f}")
+                        
+                        st.caption(f"💡 **Why:** {suggestion.reason}")
+                        
+                        # Show applied heuristics
+                        if hasattr(suggestion, 'heuristics_applied') and suggestion.heuristics_applied:
+                            st.markdown("**🎯 Applied Design Heuristics:**")
+                            for heuristic in suggestion.heuristics_applied[:4]:  # Show top 4
+                                st.markdown(f"- {heuristic}")
+                        
+                        # Show notes if available
+                        if cap.notes and cap.notes != 'nan':
+                            st.markdown(f"**📝 Notes:** {cap.notes}")
+            else:
+                st.warning("No suitable input capacitors found for these specifications")
+        
+        with tab3:
             if output_cap_suggestions:
                 for idx, suggestion in enumerate(output_cap_suggestions):
                     cap = suggestion.component
@@ -336,9 +383,9 @@ def show():
                         st.markdown(f"**Primary Use:** {cap.primary_use}")
                         st.caption(f"💡 **Why:** {suggestion.reason}")
             else:
-                st.warning("No suitable capacitors found for these specifications")
+                st.warning("No suitable output capacitors found for these specifications")
         
-        with tab3:
+        with tab4:
             if inductor_suggestions:
                 for idx, suggestion in enumerate(inductor_suggestions):
                     ind = suggestion.component
@@ -365,7 +412,7 @@ def show():
             
             # Validate component availability
             components_available = check_component_availability(
-                mosfet_suggestions, output_cap_suggestions, inductor_suggestions
+                mosfet_suggestions, input_cap_suggestions, output_cap_suggestions, inductor_suggestions
             )
             
             if not components_available:

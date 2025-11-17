@@ -6,14 +6,14 @@ Now incorporates design heuristics from documents
 from typing import List, Dict, Tuple
 from dataclasses import dataclass
 from lib.component_data import (
-    MOSFET, Capacitor, Inductor,
-    MOSFET_LIBRARY, CAPACITOR_LIBRARY, INDUCTOR_LIBRARY
+    MOSFET, Capacitor, Inductor, InputCapacitor,
+    MOSFET_LIBRARY, CAPACITOR_LIBRARY, INDUCTOR_LIBRARY, INPUT_CAPACITOR_LIBRARY
 )
 
 @dataclass
 class ComponentSuggestion:
     """Component suggestion with reasoning"""
-    component: MOSFET | Capacitor | Inductor
+    component: MOSFET | Capacitor | Inductor | InputCapacitor
     reason: str
     score: float = 0.0
     heuristics_applied: List[str] = None
@@ -339,6 +339,121 @@ def suggest_capacitors(required_capacitance_uf: float, max_voltage: float, frequ
         if applied_heuristics and i == 0:  # Add to top suggestion
             suggestion.heuristics_applied.extend([
                 f"📊 Analysis from: {', '.join(heuristics_analysis.get('documents_found', ['default']))}"
+            ])
+    
+    return suggestions[:5]  # Return top 5
+
+
+def suggest_input_capacitors(required_capacitance_uf: float, max_voltage: float, 
+                            ripple_current_a: float, frequency_hz: float = 65000) -> List[ComponentSuggestion]:
+    """
+    Suggest input capacitors based on capacitance, voltage, and ripple current requirements
+    Incorporates design heuristics from Input Capacitor Selection document
+    
+    Args:
+        required_capacitance_uf: Required capacitance (µF)
+        max_voltage: Maximum input voltage (V) 
+        ripple_current_a: Estimated RMS ripple current (A)
+        frequency_hz: Switching frequency (Hz) for improved analysis
+        
+    Returns:
+        List of input capacitor suggestions sorted by suitability with applied heuristics
+    """
+    suggestions = []
+    
+    # Import heuristics analyzer
+    try:
+        from lib.input_capacitor_heuristics import apply_input_capacitor_heuristics, analyze_input_capacitor_heuristics
+        heuristics_available = True
+        applied_heuristics = [f"✅ Using input capacitor design heuristics"]
+    except Exception as e:
+        heuristics_available = False
+        applied_heuristics = [f"⚠️ Using default algorithm (heuristics error: {str(e)[:50]})"]
+    
+    # Safety margins
+    voltage_margin = 1.5  # Default 50% voltage derating
+    capacitance_tolerance = 3.0  # Allow wider range for input capacitors
+    
+    for capacitor in INPUT_CAPACITOR_LIBRARY:
+        # Check voltage rating with margin
+        if capacitor.voltage < max_voltage * voltage_margin:
+            continue
+        
+        # Check if capacitance is in reasonable range
+        cap_ratio = capacitor.capacitance / required_capacitance_uf
+        if cap_ratio < (1/capacitance_tolerance) or cap_ratio > capacitance_tolerance:
+            continue
+        
+        # Calculate base suitability score
+        score = 100.0
+        component_heuristics = applied_heuristics.copy()
+        
+        # Apply design heuristics if available
+        if heuristics_available:
+            try:
+                heuristics_result = apply_input_capacitor_heuristics(
+                    capacitor, required_capacitance_uf, max_voltage, ripple_current_a, frequency_hz
+                )
+                score += heuristics_result['score_adjustment']
+                component_heuristics.extend(heuristics_result['applied_heuristics'])
+            except Exception as e:
+                component_heuristics.append(f"⚠️ Heuristics error: {str(e)[:30]}")
+        
+        # Basic scoring adjustments
+        # Prefer capacitance close to required value
+        cap_diff = abs(capacitor.capacitance - required_capacitance_uf) / required_capacitance_uf
+        score -= cap_diff * 20
+        
+        # Voltage rating optimization
+        voltage_ratio = capacitor.voltage / max_voltage
+        if voltage_ratio >= 2.0:
+            score += 15  # Excellent derating
+        elif voltage_ratio >= 1.5:
+            score += 10  # Good derating
+        else:
+            score -= 5   # Poor derating
+        
+        # ESR consideration
+        if capacitor.esr > 0:
+            if capacitor.esr < 20:
+                score += 8  # Low ESR is good
+                component_heuristics.append("⚡ Low ESR for efficiency")
+            elif capacitor.esr > 100:
+                score -= 5  # High ESR penalty
+        
+        # Availability bonus
+        if 'stock' in capacitor.availability.lower():
+            score += 5
+            component_heuristics.append("📦 In stock")
+        
+        # Build comprehensive reason string
+        reason = f"{capacitor.capacitance}µF {capacitor.category} at {capacitor.voltage}V "
+        reason += f"({voltage_ratio:.1f}x derating). "
+        reason += f"ESR={capacitor.esr}mΩ. "
+        reason += f"{capacitor.dielectric} dielectric, {capacitor.package} package"
+        
+        if capacitor.ripple_rating > 0:
+            reason += f". Ripple rating: {capacitor.ripple_rating}A"
+        
+        # Add heuristics summary to reason
+        if len(component_heuristics) > 1:  # More than just the base message
+            reason += f". Applied: {'; '.join(component_heuristics[1:3])}"  # Show first 2 heuristics
+        
+        suggestions.append(ComponentSuggestion(
+            component=capacitor,
+            reason=reason,
+            score=score,
+            heuristics_applied=component_heuristics
+        ))
+    
+    # Sort by score (highest first)
+    suggestions.sort(key=lambda x: x.score, reverse=True)
+    
+    # Add global heuristics summary to top suggestions
+    for i, suggestion in enumerate(suggestions[:3]):
+        if heuristics_available and i == 0:  # Add to top suggestion
+            suggestion.heuristics_applied.extend([
+                f"📊 Input capacitor design heuristics applied"
             ])
     
     return suggestions[:5]  # Return top 5
