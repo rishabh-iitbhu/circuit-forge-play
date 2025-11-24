@@ -186,8 +186,7 @@ class WebComponentScraper:
             
             return components[:5]  # Return top 5
             
-        except Exception as e:
-            st.warning(f"Mouser search error: {str(e)[:100]}. Using fallback components.")
+        except Exception:
             return self._get_mouser_fallback_components(search_term, component_type)
     
     def search_digikey(self, search_term: str, component_type: str) -> List[WebComponent]:
@@ -212,9 +211,7 @@ class WebComponentScraper:
                     self.setup_session()
                     
                     if attempt > 0:
-                        wait_time = 15 + (attempt * 10)  # 15s, 25s
-                        st.info(f"⏳ Waiting {wait_time}s before Digikey retry {attempt + 1}/2...")
-                        time.sleep(wait_time)
+                        time.sleep(2)  # Brief delay for retry
                     
                     # Use category pages instead of search to reduce rate limiting
                     category_ids = {
@@ -234,60 +231,166 @@ class WebComponentScraper:
                         components = self._extract_digikey_components_advanced(soup, search_term, component_type)
                         
                         if components:
-                            st.success(f"✅ Successfully scraped {len(components)} components from Digikey")
                             return components
                     elif response.status_code == 429:
-                        st.warning(f"⏳ Digikey rate limited (attempt {attempt + 1})")
                         continue
                     
-                except requests.exceptions.RequestException as e:
-                    st.warning(f"Digikey request failed (attempt {attempt + 1}): {str(e)[:50]}...")
+                except requests.exceptions.RequestException:
                     continue
             
             # Strategy 2: Use high-quality fallback components
-            st.info("🎯 Using verified Digikey components database (fallback)")
             return self._get_digikey_fallback_components(search_term, component_type)
             
-        except Exception as e:
-            st.warning(f"Digikey search error: {str(e)[:50]}. Using fallback database.")
+        except Exception:
             return self._get_digikey_fallback_components(search_term, component_type)
     
-    def search_components(self, search_term: str, component_type: str) -> Dict[str, List[WebComponent]]:
+    def search_components(self, search_term: str, component_type: str, 
+                         status_container=None, results_container=None) -> Dict[str, List[WebComponent]]:
         """
-        Search both Mouser and Digikey for components
+        Search both Mouser and Digikey for components with streaming results and timeout
         
         Args:
             search_term: Component search term
-            component_type: Type of component
+            component_type: Type of component (mosfet, capacitor, inductor, etc.)
+            status_container: Streamlit container for status updates
+            results_container: Streamlit container for streaming results
         
         Returns:
             Dictionary with distributor names as keys and component lists as values
         """
         if not WEB_SCRAPING_AVAILABLE:
-            st.error("Web scraping libraries not available. Please install requests and beautifulsoup4.")
+            if status_container:
+                status_container.error("❌ Web scraping not available")
             return {}
         
         results = {}
+        search_timeout = 5.0  # 5 second timeout per distributor
         
-        # Search Mouser
-        with st.spinner("🔍 Searching Mouser.com..."):
-            mouser_results = self.search_mouser(search_term, component_type)
+        # Initialize UI elements
+        progress_bar = None
+        status_text = None
+        
+        # Search Mouser first with timeout and streaming
+        if status_container:
+            with status_container.container():
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                status_text.text("🔍 Searching Mouser...")
+        
+        try:
+            mouser_results = self._search_with_timeout(
+                lambda: self.search_mouser(search_term, component_type), 
+                search_timeout
+            )
+            
+            if progress_bar:
+                progress_bar.progress(50)  # 50% complete after Mouser
+            
             if mouser_results:
                 results["Mouser"] = mouser_results
-                st.success(f"✅ Found {len(mouser_results)} components on Mouser")
-            else:
-                st.warning("⚠️ No Mouser results - using fallback data")
+                if results_container:
+                    self._display_streaming_results("Mouser", mouser_results, results_container)
+            
+        except Exception:
+            pass  # Silent fail - will use local database
         
-        # Search Digikey with advanced handling
-        with st.spinner("🔍 Searching Digikey.com..."):
-            digikey_results = self.search_digikey(search_term, component_type)
+        # Search Digikey with timeout and streaming  
+        if status_text:
+            status_text.text("🔍 Searching Digikey...")
+        
+        try:
+            digikey_results = self._search_with_timeout(
+                lambda: self.search_digikey(search_term, component_type),
+                search_timeout
+            )
+            
+            if progress_bar:
+                progress_bar.progress(100)  # 100% complete
+            
             if digikey_results:
                 results["Digikey"] = digikey_results
-                st.success(f"✅ Found {len(digikey_results)} components on Digikey")
+                if results_container:
+                    self._display_streaming_results("Digikey", digikey_results, results_container)
+                    
+        except Exception:
+            pass  # Silent fail - will use local database
+        
+        # Final status update
+        if status_text:
+            total_found = sum(len(comps) for comps in results.values())
+            if total_found > 0:
+                status_text.text(f"✅ Found {total_found} components from web search")
             else:
-                st.warning("⚠️ No Digikey results - check rate limits")
+                status_text.text("💡 Using local component database")
+        
+        if progress_bar:
+            progress_bar.empty()  # Remove progress bar when complete
         
         return results
+    
+    def _search_with_timeout(self, search_func, timeout_seconds: float):
+        """Execute search function with timeout - cross-platform implementation"""
+        import threading
+        import queue
+        
+        # Use threading for cross-platform timeout
+        result_queue = queue.Queue()
+        exception_queue = queue.Queue()
+        
+        def target():
+            try:
+                result = search_func()
+                result_queue.put(result)
+            except Exception as e:
+                exception_queue.put(e)
+        
+        thread = threading.Thread(target=target)
+        thread.daemon = True
+        thread.start()
+        thread.join(timeout_seconds)
+        
+        if thread.is_alive():
+            # Search timed out
+            return []
+        
+        # Check for exceptions
+        if not exception_queue.empty():
+            return []
+        
+        # Get result if available
+        if not result_queue.empty():
+            return result_queue.get()
+        
+        return []
+    
+    def _display_streaming_results(self, distributor: str, components: List[WebComponent], 
+                                 container):
+        """Display results as they arrive in a clean format"""
+        with container.container():
+            # Clean header with distributor badge
+            cols = st.columns([1, 4])
+            with cols[0]:
+                if distributor == "Mouser":
+                    st.markdown("🟦 **Mouser**")
+                else:
+                    st.markdown("🟨 **Digikey**")
+            with cols[1]:
+                st.markdown(f"**{len(components)} components found**")
+            
+            # Show top 2 results immediately in a compact format
+            for i, comp in enumerate(components[:2]):
+                with st.container():
+                    col1, col2, col3 = st.columns([3, 2, 2])
+                    with col1:
+                        st.markdown(f"**{comp.part_number}**")
+                        st.caption(comp.manufacturer)
+                    with col2:
+                        st.markdown(f"💰 {comp.price}")
+                    with col3:
+                        st.markdown(f"📦 {comp.availability}")
+                
+                if i == 0:  # Add subtle divider after first component
+                    st.markdown("---")
 
 def create_component_search_terms(circuit_params: Dict[str, Any]) -> Dict[str, str]:
     """

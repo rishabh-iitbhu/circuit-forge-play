@@ -49,10 +49,20 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
                 'frequency': frequency_hz
             }
             
-            # Search for MOSFETs
+            # Search for MOSFETs with streaming UI
             scraper = WebComponentScraper()
             search_terms = create_component_search_terms(circuit_params)
-            web_results = scraper.search_components(search_terms['mosfet'], 'mosfet')
+            
+            # Create containers for streaming results
+            import streamlit as st
+            status_container = st.empty()
+            results_container = st.empty()
+            
+            web_results = scraper.search_components(
+                search_terms['mosfet'], 'mosfet', 
+                status_container=status_container,
+                results_container=results_container
+            )
             
             # Convert web results to ComponentSuggestion format
             suggestions = []
@@ -254,7 +264,17 @@ def suggest_capacitors(required_capacitance_uf: float, max_voltage: float, frequ
             
             scraper = WebComponentScraper()
             search_terms = create_component_search_terms(circuit_params)
-            web_results = scraper.search_components(search_terms['output_capacitor'], 'output_capacitor')
+            
+            # Create containers for streaming results
+            import streamlit as st
+            status_container = st.empty()
+            results_container = st.empty()
+            
+            web_results = scraper.search_components(
+                search_terms['output_capacitor'], 'output_capacitor',
+                status_container=status_container,
+                results_container=results_container
+            )
             
             suggestions = []
             for distributor, components in web_results.items():
@@ -469,7 +489,17 @@ def suggest_input_capacitors(required_capacitance_uf: float, max_voltage: float,
             
             scraper = WebComponentScraper()
             search_terms = create_component_search_terms(circuit_params)
-            web_results = scraper.search_components(search_terms['input_capacitor'], 'input_capacitor')
+            
+            # Create containers for streaming results
+            import streamlit as st
+            status_container = st.empty()
+            results_container = st.empty()
+            
+            web_results = scraper.search_components(
+                search_terms['input_capacitor'], 'input_capacitor',
+                status_container=status_container,
+                results_container=results_container
+            )
             
             suggestions = []
             for distributor, components in web_results.items():
@@ -630,7 +660,17 @@ def suggest_inductors(required_inductance_uh: float, max_current: float, frequen
             
             scraper = WebComponentScraper()
             search_terms = create_component_search_terms(circuit_params)
-            web_results = scraper.search_components(search_terms['inductor'], 'inductor')
+            
+            # Create containers for streaming results
+            import streamlit as st
+            status_container = st.empty()
+            results_container = st.empty()
+            
+            web_results = scraper.search_components(
+                search_terms['inductor'], 'inductor',
+                status_container=status_container,
+                results_container=results_container
+            )
             
             suggestions = []
             for distributor, components in web_results.items():
