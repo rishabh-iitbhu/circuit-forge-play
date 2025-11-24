@@ -58,14 +58,16 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
             suggestions = []
             for distributor, components in web_results.items():
                 for comp in components:
-                    # Create a mock MOSFET object for compatibility
+                    # Create a mock MOSFET object for compatibility with existing structure
                     mock_mosfet = type('MOSFET', (), {
-                        'part_number': comp.part_number,
+                        'name': comp.part_number,  # Use 'name' to match existing MOSFET structure
                         'manufacturer': comp.manufacturer,
-                        'vds_max': f"See datasheet",
-                        'id_max': f"See datasheet", 
-                        'rds_on': f"See datasheet",
-                        'package': comp.package or "See datasheet",
+                        'vds': 100.0,  # Default values - user should check datasheet
+                        'id': 30.0,
+                        'rdson': 50.0,
+                        'qg': 0.0,
+                        'package': comp.package or "TO-220",
+                        'typical_use': f"Web search result - {comp.description}",
                         'price': comp.price,
                         'availability': comp.availability,
                         'distributor': comp.distributor
@@ -258,15 +260,16 @@ def suggest_capacitors(required_capacitance_uf: float, max_voltage: float, frequ
             for distributor, components in web_results.items():
                 for comp in components:
                     mock_capacitor = type('Capacitor', (), {
-                        'part_number': comp.part_number,
+                        'name': comp.part_number,  # Use 'name' to match existing Capacitor structure
                         'manufacturer': comp.manufacturer,
-                        'capacitance_uf': f"{required_capacitance_uf:.1f}µF (target)",
-                        'voltage_rating': f"≥{max_voltage}V",
+                        'capacitance_uf': required_capacitance_uf,  # Numeric value for compatibility
+                        'voltage_rating': max_voltage,  # Numeric value for compatibility
                         'dielectric': "See datasheet",
-                        'package': comp.package or "See datasheet",
+                        'package': comp.package or "1206",  # Default package
                         'price': comp.price,
                         'availability': comp.availability,
-                        'distributor': comp.distributor
+                        'distributor': comp.distributor,
+                        'description': comp.description
                     })()
                     
                     suggestion = ComponentSuggestion(
@@ -472,16 +475,17 @@ def suggest_input_capacitors(required_capacitance_uf: float, max_voltage: float,
             for distributor, components in web_results.items():
                 for comp in components:
                     mock_input_cap = type('InputCapacitor', (), {
-                        'part_number': comp.part_number,
+                        'name': comp.part_number,  # Use 'name' to match existing structure
                         'manufacturer': comp.manufacturer,
-                        'capacitance_uf': f"{required_capacitance_uf:.1f}µF (target)",
-                        'voltage_rating': f"≥{max_voltage}V",
-                        'ripple_current_a': f"≥{ripple_current_a:.2f}A",
+                        'capacitance_uf': required_capacitance_uf,  # Numeric value for compatibility
+                        'voltage_rating': max_voltage,  # Numeric value for compatibility
+                        'ripple_current_a': ripple_current_a,  # Numeric value for compatibility
                         'dielectric': "See datasheet",
                         'package': comp.package or "See datasheet",
                         'price': comp.price,
                         'availability': comp.availability,
-                        'distributor': comp.distributor
+                        'distributor': comp.distributor,
+                        'description': comp.description
                     })()
                     
                     suggestion = ComponentSuggestion(
@@ -632,15 +636,16 @@ def suggest_inductors(required_inductance_uh: float, max_current: float, frequen
             for distributor, components in web_results.items():
                 for comp in components:
                     mock_inductor = type('Inductor', (), {
-                        'part_number': comp.part_number,
+                        'name': comp.part_number,  # Use 'name' to match existing Inductor structure
                         'manufacturer': comp.manufacturer,
-                        'inductance_uh': f"{required_inductance_uh:.1f}µH (target)",
-                        'current_rating_a': f"≥{max_current:.2f}A",
-                        'dc_resistance': "See datasheet",
+                        'inductance_uh': required_inductance_uh,  # Numeric value for compatibility
+                        'current_rating_a': max_current,  # Numeric value for compatibility
+                        'dc_resistance': 0.1,  # Default DCR value - user should check datasheet
                         'package': comp.package or "See datasheet",
                         'price': comp.price,
                         'availability': comp.availability,
-                        'distributor': comp.distributor
+                        'distributor': comp.distributor,
+                        'description': comp.description
                     })()
                     
                     suggestion = ComponentSuggestion(
