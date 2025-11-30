@@ -53,22 +53,20 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
             scraper = WebComponentScraper()
             search_terms = create_component_search_terms(circuit_params)
             
-            # Create containers for streaming results
+            # Create status container for progress tracking
             import streamlit as st
             status_container = st.empty()
-            results_container = st.empty()
             
             web_results = scraper.search_components(
                 search_terms['mosfet'], 'mosfet', 
-                status_container=status_container,
-                results_container=results_container
+                status_container=status_container
             )
             
             # Convert web results to ComponentSuggestion format
             suggestions = []
             for distributor, components in web_results.items():
                 for comp in components:
-                    # Create a mock MOSFET object for compatibility with existing structure
+                    # Create a mock MOSFET object with ALL required attributes from local MOSFET dataclass
                     mock_mosfet = type('MOSFET', (), {
                         'name': comp.part_number,  # Use 'name' to match existing MOSFET structure
                         'manufacturer': comp.manufacturer,
@@ -78,6 +76,7 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
                         'qg': 0.0,
                         'package': comp.package or "TO-220",
                         'typical_use': f"Web search result - {comp.description}",
+                        'efficiency_range': "See datasheet",  # Required attribute that was missing!
                         'price': comp.price,
                         'availability': comp.availability,
                         'distributor': comp.distributor
@@ -265,31 +264,31 @@ def suggest_capacitors(required_capacitance_uf: float, max_voltage: float, frequ
             scraper = WebComponentScraper()
             search_terms = create_component_search_terms(circuit_params)
             
-            # Create containers for streaming results
+            # Create status container for progress tracking
             import streamlit as st
             status_container = st.empty()
-            results_container = st.empty()
             
             web_results = scraper.search_components(
                 search_terms['output_capacitor'], 'output_capacitor',
-                status_container=status_container,
-                results_container=results_container
+                status_container=status_container
             )
             
             suggestions = []
             for distributor, components in web_results.items():
                 for comp in components:
+                    # Create mock Capacitor matching exact dataclass structure
                     mock_capacitor = type('Capacitor', (), {
-                        'name': comp.part_number,  # Use 'name' to match existing Capacitor structure
+                        'part_number': comp.part_number,  # Use exact field names from dataclass
                         'manufacturer': comp.manufacturer,
-                        'capacitance_uf': required_capacitance_uf,  # Numeric value for compatibility
-                        'voltage_rating': max_voltage,  # Numeric value for compatibility
-                        'dielectric': "See datasheet",
-                        'package': comp.package or "1206",  # Default package
+                        'capacitance': required_capacitance_uf,  # µF - exact field name
+                        'voltage': max_voltage,  # V - exact field name
+                        'type': "See datasheet",  # Required field
+                        'esr': "See datasheet",  # mΩ - Required field
+                        'primary_use': f"Web search result - {comp.description}",  # Required field
+                        'temp_range': "See datasheet",  # Required field
                         'price': comp.price,
                         'availability': comp.availability,
-                        'distributor': comp.distributor,
-                        'description': comp.description
+                        'distributor': comp.distributor
                     })()
                     
                     suggestion = ComponentSuggestion(
@@ -490,32 +489,36 @@ def suggest_input_capacitors(required_capacitance_uf: float, max_voltage: float,
             scraper = WebComponentScraper()
             search_terms = create_component_search_terms(circuit_params)
             
-            # Create containers for streaming results
+            # Create status container for progress tracking
             import streamlit as st
             status_container = st.empty()
-            results_container = st.empty()
             
             web_results = scraper.search_components(
                 search_terms['input_capacitor'], 'input_capacitor',
-                status_container=status_container,
-                results_container=results_container
+                status_container=status_container
             )
             
             suggestions = []
             for distributor, components in web_results.items():
                 for comp in components:
+                    # Create mock InputCapacitor matching exact dataclass structure
                     mock_input_cap = type('InputCapacitor', (), {
-                        'name': comp.part_number,  # Use 'name' to match existing structure
+                        'part_number': comp.part_number,  # Exact field names from dataclass
                         'manufacturer': comp.manufacturer,
-                        'capacitance_uf': required_capacitance_uf,  # Numeric value for compatibility
-                        'voltage_rating': max_voltage,  # Numeric value for compatibility
-                        'ripple_current_a': ripple_current_a,  # Numeric value for compatibility
-                        'dielectric': "See datasheet",
+                        'category': "See datasheet",  # MLCC, Polymer, Electrolytic, Film
+                        'dielectric': "See datasheet",  # X7R, X5R, etc.
+                        'capacitance': required_capacitance_uf,  # µF
+                        'voltage': max_voltage,  # V
+                        'esr': 0.1,  # mΩ - default value
+                        'esl': 1.0,  # nH - default value
+                        'ripple_rating': ripple_current_a,  # A
+                        'lifetime': 5000.0,  # hours - default value
                         'package': comp.package or "See datasheet",
-                        'price': comp.price,
+                        'cost': 0.0,  # USD - default
                         'availability': comp.availability,
-                        'distributor': comp.distributor,
-                        'description': comp.description
+                        'notes': f"Web search result - {comp.description}",
+                        'price': comp.price,
+                        'distributor': comp.distributor
                     })()
                     
                     suggestion = ComponentSuggestion(
@@ -661,31 +664,33 @@ def suggest_inductors(required_inductance_uh: float, max_current: float, frequen
             scraper = WebComponentScraper()
             search_terms = create_component_search_terms(circuit_params)
             
-            # Create containers for streaming results
+            # Create status container for progress tracking
             import streamlit as st
             status_container = st.empty()
-            results_container = st.empty()
             
             web_results = scraper.search_components(
                 search_terms['inductor'], 'inductor',
-                status_container=status_container,
-                results_container=results_container
+                status_container=status_container
             )
             
             suggestions = []
             for distributor, components in web_results.items():
                 for comp in components:
+                    # Create mock Inductor matching exact dataclass structure
                     mock_inductor = type('Inductor', (), {
-                        'name': comp.part_number,  # Use 'name' to match existing Inductor structure
+                        'part_number': comp.part_number,  # Exact field names from dataclass
                         'manufacturer': comp.manufacturer,
-                        'inductance_uh': required_inductance_uh,  # Numeric value for compatibility
-                        'current_rating_a': max_current,  # Numeric value for compatibility
-                        'dc_resistance': 0.1,  # Default DCR value - user should check datasheet
+                        'inductance': required_inductance_uh,  # µH
+                        'current': max_current,  # A
+                        'dcr': 0.1,  # mΩ (DC Resistance) - default value
+                        'sat_current': max_current * 1.2,  # A - slightly higher than operating current
                         'package': comp.package or "See datasheet",
+                        'shielded': False,  # Default value
+                        'core_material': "See datasheet",  # Default value
+                        'temp_range': "See datasheet",  # Default value
                         'price': comp.price,
                         'availability': comp.availability,
-                        'distributor': comp.distributor,
-                        'description': comp.description
+                        'distributor': comp.distributor
                     })()
                     
                     suggestion = ComponentSuggestion(

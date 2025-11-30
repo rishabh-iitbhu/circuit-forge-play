@@ -245,7 +245,7 @@ class WebComponentScraper:
             return self._get_digikey_fallback_components(search_term, component_type)
     
     def search_components(self, search_term: str, component_type: str, 
-                         status_container=None, results_container=None) -> Dict[str, List[WebComponent]]:
+                         status_container=None) -> Dict[str, List[WebComponent]]:
         """
         Search both Mouser and Digikey for components with streaming results and timeout
         
@@ -253,7 +253,6 @@ class WebComponentScraper:
             search_term: Component search term
             component_type: Type of component (mosfet, capacitor, inductor, etc.)
             status_container: Streamlit container for status updates
-            results_container: Streamlit container for streaming results
         
         Returns:
             Dictionary with distributor names as keys and component lists as values
@@ -264,7 +263,7 @@ class WebComponentScraper:
             return {}
         
         results = {}
-        search_timeout = 5.0  # 5 second timeout per distributor
+        search_timeout = 20.0  # 20 second timeout per distributor
         
         # Initialize UI elements
         progress_bar = None
@@ -288,8 +287,7 @@ class WebComponentScraper:
             
             if mouser_results:
                 results["Mouser"] = mouser_results
-                if results_container:
-                    self._display_streaming_results("Mouser", mouser_results, results_container)
+                # Results will be displayed after all searches complete
             
         except Exception:
             pass  # Silent fail - will use local database
@@ -309,8 +307,7 @@ class WebComponentScraper:
             
             if digikey_results:
                 results["Digikey"] = digikey_results
-                if results_container:
-                    self._display_streaming_results("Digikey", digikey_results, results_container)
+                # Results will be displayed after all searches complete
                     
         except Exception:
             pass  # Silent fail - will use local database
