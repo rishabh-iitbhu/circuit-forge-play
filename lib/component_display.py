@@ -10,14 +10,14 @@ from lib.component_suggestions import ComponentSuggestion
 
 def create_component_table(suggestions: List[ComponentSuggestion], component_type: str) -> pd.DataFrame:
     """
-    Create a standardized DataFrame for component display
+    Create a streamlined DataFrame for component selection
     
     Args:
         suggestions: List of ComponentSuggestion objects
         component_type: Type of component ('mosfet', 'capacitor', 'inductor', 'input_capacitor')
     
     Returns:
-        DataFrame with standardized columns
+        DataFrame with essential columns only - click for details
     """
     if not suggestions:
         return pd.DataFrame()
@@ -27,25 +27,20 @@ def create_component_table(suggestions: List[ComponentSuggestion], component_typ
     for i, suggestion in enumerate(suggestions):
         comp = suggestion.component
         
-        # Base columns for all components
+        # Essential information only - streamlined table
         row = {
-            '#': i + 1,
+            'Select': f"🔘 #{i + 1}",  # Click indicator
             'Part Number': getattr(comp, 'part_number', getattr(comp, 'name', 'N/A')),
             'Manufacturer': getattr(comp, 'manufacturer', 'N/A'),
-            'Score': f"{suggestion.score:.1f}/10",
             'Source': getattr(comp, 'distributor', 'Local Database'),
-            'Price': getattr(comp, 'price', 'See distributor'),
-            'Availability': getattr(comp, 'availability', 'Check stock'),
         }
         
-        # Component-specific technical specifications
+        # Add only the most critical specs for quick comparison
         if component_type == 'mosfet':
             row.update({
                 'VDS (V)': getattr(comp, 'vds', 'N/A'),
                 'ID (A)': getattr(comp, 'id', 'N/A'), 
                 'RDS(on) (mΩ)': getattr(comp, 'rdson', 'N/A'),
-                'Package': getattr(comp, 'package', 'N/A'),
-                'Efficiency': getattr(comp, 'efficiency_range', 'See datasheet')
             })
             
         elif component_type in ['capacitor', 'output_capacitor']:
@@ -53,17 +48,13 @@ def create_component_table(suggestions: List[ComponentSuggestion], component_typ
                 'Capacitance (µF)': getattr(comp, 'capacitance', 'N/A'),
                 'Voltage (V)': getattr(comp, 'voltage', 'N/A'),
                 'ESR': getattr(comp, 'esr', 'N/A'),
-                'Type': getattr(comp, 'type', 'N/A'),
-                'Temp Range': getattr(comp, 'temp_range', 'N/A')
             })
             
         elif component_type == 'input_capacitor':
             row.update({
                 'Capacitance (µF)': getattr(comp, 'capacitance', 'N/A'),
                 'Voltage (V)': getattr(comp, 'voltage', 'N/A'),
-                'Category': getattr(comp, 'category', 'N/A'),
                 'ESR (mΩ)': getattr(comp, 'esr', 'N/A'),
-                'Ripple (A)': getattr(comp, 'ripple_rating', 'N/A')
             })
             
         elif component_type == 'inductor':
@@ -71,12 +62,13 @@ def create_component_table(suggestions: List[ComponentSuggestion], component_typ
                 'Inductance (µH)': getattr(comp, 'inductance', 'N/A'),
                 'Current (A)': getattr(comp, 'current', 'N/A'),
                 'DCR (mΩ)': getattr(comp, 'dcr', 'N/A'),
-                'Shielded': 'Yes' if getattr(comp, 'shielded', False) else 'No',
-                'Package': getattr(comp, 'package', 'N/A')
             })
         
-        # Add reason/explanation
-        row['Why Selected'] = suggestion.reason
+        # Add price and availability
+        row.update({
+            'Price': getattr(comp, 'price', 'See distributor'),
+            'Stock': getattr(comp, 'availability', 'Check stock'),
+        })
         
         data.append(row)
     
@@ -116,7 +108,7 @@ def create_component_links(part_number: str, manufacturer: str, distributor: str
 
 def display_component_table(suggestions: List[ComponentSuggestion], component_type: str, title: str):
     """
-    Display components in a clean, standardized table format
+    Display components in an interactive table - click to see details
     
     Args:
         suggestions: List of ComponentSuggestion objects
@@ -129,118 +121,178 @@ def display_component_table(suggestions: List[ComponentSuggestion], component_ty
     
     st.subheader(title)
     
-    # Create the standardized table
+    # Store suggestions in session state with a unique key for this component type
+    session_key = f"{component_type}_suggestions"
+    st.session_state[session_key] = suggestions
+    
+    # Debug information
+    if st.checkbox(f"Debug {component_type}", key=f"debug_{component_type}"):
+        st.write(f"**Debug Info for {component_type}:**")
+        st.write(f"- Original suggestions count: {len(suggestions)}")
+        st.write(f"- Session key: {session_key}")
+        st.write(f"- Session state has key: {session_key in st.session_state}")
+        if suggestions:
+            sample_comp = suggestions[0].component
+            st.write(f"- Sample component attributes: {[attr for attr in dir(sample_comp) if not attr.startswith('_')]}")
+            st.write(f"- Sample distributor: {getattr(sample_comp, 'distributor', 'None')}")
+    
+    # Display component count and source summary
+    web_count = len([s for s in suggestions if hasattr(s.component, 'distributor') and getattr(s.component, 'distributor', '') in ['Mouser', 'Digikey']])
+    local_count = len(suggestions) - web_count
+    
+    if web_count > 0 and local_count > 0:
+        st.info(f"📊 Found **{len(suggestions)}** components: {web_count} from web search, {local_count} from local database")
+    elif web_count > 0:
+        st.success(f"🌐 Found **{web_count}** components from web search")
+    else:
+        st.info(f"📚 Found **{local_count}** components from local database")
+    
+    # Create streamlined table
     df = create_component_table(suggestions, component_type)
     
     if df.empty:
         st.warning(f"No {title.lower()} data available")
         return
     
-    # Display summary
-    web_count = len([s for s in suggestions if hasattr(s.component, 'distributor') and getattr(s.component, 'distributor', '') in ['Mouser', 'Digikey']])
-    local_count = len(suggestions) - web_count
+    # Configure columns for better display
+    column_config = {
+        'Select': st.column_config.TextColumn(
+            "Select", help="Click row to see details", width="small"
+        ),
+        'Part Number': st.column_config.TextColumn(
+            "Part Number", help="Manufacturer part number", width="medium"
+        ),
+        'Manufacturer': st.column_config.TextColumn(
+            "Manufacturer", help="Component manufacturer", width="medium"
+        ),
+        'Source': st.column_config.TextColumn(
+            "Source", help="Data source", width="medium"
+        ),
+        'Price': st.column_config.TextColumn(
+            "Price", help="Component price", width="medium"
+        ),
+        'Stock': st.column_config.TextColumn(
+            "Stock", help="Availability status", width="medium"
+        ),
+    }
     
-    if web_count > 0 and local_count > 0:
-        st.info(f"📊 Found {len(suggestions)} components: {web_count} from web search, {local_count} from local database")
-    elif web_count > 0:
-        st.success(f"🌐 Found {web_count} components from web search")
-    else:
-        st.info(f"📚 Found {local_count} components from local database")
-    
-    # Display the table
-    st.dataframe(
+    # Display the interactive table
+    selected_data = st.dataframe(
         df,
+        column_config=column_config,
         use_container_width=True,
         hide_index=True,
-        column_config={
-            "#": st.column_config.NumberColumn("#", width="small"),
-            "Part Number": st.column_config.TextColumn("Part Number", width="medium"),
-            "Manufacturer": st.column_config.TextColumn("Manufacturer", width="medium"),
-            "Score": st.column_config.TextColumn("Score", width="small"),
-            "Source": st.column_config.TextColumn("Source", width="medium"),
-            "Price": st.column_config.TextColumn("Price", width="small"),
-            "Availability": st.column_config.TextColumn("Stock", width="small"),
-            "Why Selected": st.column_config.TextColumn("Why Selected", width="large")
-        }
+        on_select="rerun",
+        selection_mode="single-row",
+        key=f"{component_type}_table"
     )
     
-    # Add expandable details for top 3 components with working links
-    st.markdown("### 🔗 Component Details & Links")
-    
-    for i, suggestion in enumerate(suggestions[:3]):
-        comp = suggestion.component
-        part_number = getattr(comp, 'part_number', getattr(comp, 'name', f'Component_{i+1}'))
-        manufacturer = getattr(comp, 'manufacturer', 'Unknown')
-        distributor = getattr(comp, 'distributor', None)
+    # Show details for selected component
+    if selected_data and 'selection' in selected_data and selected_data['selection']['rows']:
+        selected_idx = selected_data['selection']['rows'][0]
         
-        # Generate working links
-        links = create_component_links(part_number, manufacturer, distributor)
+        # Get suggestions from session state to ensure they persist across reruns
+        stored_suggestions = st.session_state.get(session_key, suggestions)
         
-        with st.expander(f"#{i+1} {part_number} - {manufacturer}", expanded=(i==0)):
-            col1, col2 = st.columns([3, 1])
+        if selected_idx < len(stored_suggestions):
+            selected_component = stored_suggestions[selected_idx]
+            
+            st.write("---")
+            st.subheader(f"📋 Component Details - #{selected_idx + 1}")
+            
+            comp = selected_component.component
+            part_number = getattr(comp, 'part_number', getattr(comp, 'name', f'Component_{selected_idx+1}'))
+            manufacturer = getattr(comp, 'manufacturer', 'Unknown')
+            distributor = getattr(comp, 'distributor', None)
+            
+            # Create two columns for details and links
+            col1, col2 = st.columns([2, 1])
             
             with col1:
-                # Display technical specifications based on component type
+                st.write(f"**Part Number:** {part_number}")
+                st.write(f"**Manufacturer:** {manufacturer}")
+                
+                # Technical specifications
                 if component_type == 'mosfet':
-                    st.markdown(f"""
-                    **Technical Specifications:**
-                    - **VDS:** {getattr(comp, 'vds', 'N/A')}V
-                    - **ID:** {getattr(comp, 'id', 'N/A')}A  
-                    - **RDS(on):** {getattr(comp, 'rdson', 'N/A')}mΩ
-                    - **Package:** {getattr(comp, 'package', 'N/A')}
-                    - **Efficiency Range:** {getattr(comp, 'efficiency_range', 'See datasheet')}
-                    """)
+                    st.write(f"**Drain-Source Voltage (VDS):** {getattr(comp, 'vds', 'N/A')} V")
+                    st.write(f"**Drain Current (ID):** {getattr(comp, 'id', 'N/A')} A")
+                    st.write(f"**On-Resistance (RDS(on)):** {getattr(comp, 'rdson', 'N/A')} mΩ")
+                    st.write(f"**Package:** {getattr(comp, 'package', 'N/A')}")
+                    if hasattr(comp, 'efficiency_range'):
+                        st.write(f"**Expected Efficiency:** {comp.efficiency_range}")
                 
                 elif component_type in ['capacitor', 'output_capacitor']:
-                    st.markdown(f"""
-                    **Technical Specifications:**
-                    - **Capacitance:** {getattr(comp, 'capacitance', 'N/A')}µF
-                    - **Voltage Rating:** {getattr(comp, 'voltage', 'N/A')}V
-                    - **ESR:** {getattr(comp, 'esr', 'N/A')}
-                    - **Type:** {getattr(comp, 'type', 'N/A')}
-                    - **Temperature Range:** {getattr(comp, 'temp_range', 'N/A')}
-                    """)
+                    st.write(f"**Capacitance:** {getattr(comp, 'capacitance', 'N/A')} µF")
+                    st.write(f"**Rated Voltage:** {getattr(comp, 'voltage', 'N/A')} V")
+                    st.write(f"**ESR:** {getattr(comp, 'esr', 'N/A')}")
+                    if hasattr(comp, 'type'):
+                        st.write(f"**Dielectric Type:** {comp.type}")
+                    if hasattr(comp, 'temp_range'):
+                        st.write(f"**Temperature Range:** {comp.temp_range}")
                 
                 elif component_type == 'input_capacitor':
-                    st.markdown(f"""
-                    **Technical Specifications:**
-                    - **Capacitance:** {getattr(comp, 'capacitance', 'N/A')}µF
-                    - **Voltage Rating:** {getattr(comp, 'voltage', 'N/A')}V
-                    - **Category:** {getattr(comp, 'category', 'N/A')}
-                    - **ESR:** {getattr(comp, 'esr', 'N/A')}mΩ
-                    - **Ripple Current:** {getattr(comp, 'ripple_rating', 'N/A')}A
-                    """)
+                    st.write(f"**Capacitance:** {getattr(comp, 'capacitance', 'N/A')} µF")
+                    st.write(f"**Rated Voltage:** {getattr(comp, 'voltage', 'N/A')} V")
+                    st.write(f"**ESR:** {getattr(comp, 'esr', 'N/A')} mΩ")
+                    if hasattr(comp, 'category'):
+                        st.write(f"**Category:** {comp.category}")
+                    if hasattr(comp, 'ripple_rating'):
+                        st.write(f"**Ripple Current Rating:** {comp.ripple_rating} A")
                 
                 elif component_type == 'inductor':
-                    st.markdown(f"""
-                    **Technical Specifications:**
-                    - **Inductance:** {getattr(comp, 'inductance', 'N/A')}µH
-                    - **Current Rating:** {getattr(comp, 'current', 'N/A')}A
-                    - **DC Resistance:** {getattr(comp, 'dcr', 'N/A')}mΩ
-                    - **Shielded:** {'Yes' if getattr(comp, 'shielded', False) else 'No'}
-                    - **Package:** {getattr(comp, 'package', 'N/A')}
-                    """)
+                    st.write(f"**Inductance:** {getattr(comp, 'inductance', 'N/A')} µH")
+                    st.write(f"**Current Rating:** {getattr(comp, 'current', 'N/A')} A")
+                    st.write(f"**DC Resistance (DCR):** {getattr(comp, 'dcr', 'N/A')} mΩ")
+                    st.write(f"**Shielded:** {'Yes' if getattr(comp, 'shielded', False) else 'No'}")
+                    st.write(f"**Package:** {getattr(comp, 'package', 'N/A')}")
+                
+                # Selection reasoning
+                st.write("**Why This Component:**")
+                st.info(selected_component.reason)
             
             with col2:
-                # Working links
-                st.markdown("**🔗 Links:**")
-                st.markdown(f"[🛒 Buy Component]({links['component']})")
-                st.markdown(f"[📄 Datasheet]({links['datasheet']})")
+                st.write("**📍 Purchase Information**")
                 
-                # Price and availability
-                price = getattr(comp, 'price', 'See distributor')
-                availability = getattr(comp, 'availability', 'Check stock')
-                st.markdown(f"**💰 Price:** {price}")
-                st.markdown(f"**📦 Stock:** {availability}")
-            
-            # Selection reasoning
-            st.info(f"💡 **Why Selected:** {suggestion.reason}")
-            
-            # Applied heuristics if available
-            if hasattr(suggestion, 'heuristics_applied') and suggestion.heuristics_applied:
-                st.markdown("**📋 Applied Design Heuristics:**")
-                for heuristic in suggestion.heuristics_applied[:3]:
-                    st.markdown(f"- {heuristic}")
+                # Source and pricing
+                st.write(f"**Source:** {distributor or 'Local Database'}")
+                
+                if hasattr(comp, 'price') and comp.price != 'See distributor':
+                    st.write(f"**Price:** {comp.price}")
+                else:
+                    st.write("**Price:** Check distributor")
+                
+                if hasattr(comp, 'availability'):
+                    st.write(f"**Availability:** {comp.availability}")
+                
+                st.write("---")
+                st.write("**🔗 Quick Links:**")
+                
+                # Generate working links
+                links = create_component_links(part_number, manufacturer, distributor)
+                
+                # Component page link
+                if hasattr(comp, 'component_url') and comp.component_url:
+                    st.markdown(f"🛒 [View on {distributor or 'Distributor'}]({comp.component_url})")
+                else:
+                    st.markdown(f"🛒 [Search Component]({links['component']})")
+                
+                # Datasheet link
+                if hasattr(comp, 'datasheet_url') and comp.datasheet_url:
+                    st.markdown(f"📄 [Download Datasheet]({comp.datasheet_url})")
+                else:
+                    st.markdown(f"📄 [Find Datasheet]({links['datasheet']})")
+                
+                if not (hasattr(comp, 'component_url') and comp.component_url):
+                    st.caption("*Enhanced links available for web search results*")
+        else:
+            st.error(f"Selected component index {selected_idx} is out of range. Please try again.")
+    else:
+        st.info("👆 **Click on any row above to view detailed component information**")
+        st.write("The table shows essential specifications for quick comparison. Select a component to see:")
+        st.write("• Complete technical specifications")  
+        st.write("• Selection reasoning")
+        st.write("• Purchase links and datasheet access")
+        st.write("• Pricing and availability information")
 
 def filter_suggestions_by_source(suggestions: List[ComponentSuggestion], use_web_search: bool) -> List[ComponentSuggestion]:
     """

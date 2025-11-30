@@ -324,7 +324,7 @@ def show():
         from lib.component_display import display_component_table, filter_suggestions_by_source
         
         # Filter suggestions based on search mode
-        use_web_search = st.session_state.get('component_source', 'Local Database') == 'Web Search'
+        use_web_search = st.session_state.get('component_source', 'local') == 'web'
         
         # Display in tabs with new standardized format
         tab1, tab2, tab3, tab4 = st.tabs(["💻 MOSFETs", "📥 Input Capacitors", "📤 Output Capacitors", "🧲 Inductors"])
