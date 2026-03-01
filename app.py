@@ -5,6 +5,10 @@ Main application file for circuit design with PFC and Buck converter calculators
 
 import streamlit as st
 
+from lib.llm_assistant import LLMAgent
+
+# Instantiate once so session state can reuse
+assistant_agent = LLMAgent()
 # Page configuration
 st.set_page_config(
     page_title="Circuit Designer Pro",
@@ -102,6 +106,39 @@ except ImportError as e:
 def main():
     """Main application entry point"""
     
+    def render_llm_assistant():
+        """Render the expandable assistant chat UI"""
+
+        if 'llm_history' not in st.session_state:
+            st.session_state.llm_history = []
+
+        if 'llm_query' not in st.session_state:
+            st.session_state.llm_query = ""
+
+        with st.expander("💬 Circuit Forge Intelligence", expanded=False):
+            st.caption("Ask for calculations, component lookup, or heuristic summaries. OpenAI function calling powers the answers if configured.")
+            user_prompt = st.text_input(
+                "",
+                key="llm_query",
+                placeholder="e.g. Recommend a MOSFET for a 48V/10A buck.",
+                label_visibility="collapsed",
+            )
+
+            if st.button("Send", key="llm_send") and user_prompt.strip():
+                response = assistant_agent.query(user_prompt.strip(), st.session_state.llm_history)
+                st.session_state.llm_history.extend([
+                    {"role": "user", "content": user_prompt.strip()},
+                    {"role": "assistant", "content": response},
+                ])
+                st.session_state.llm_query = ""
+
+            if st.session_state.llm_history:
+                for message in st.session_state.llm_history[-6:]:
+                    role = "You" if message["role"] == "user" else "Assistant"
+                    st.markdown(f"**{role}:** {message['content']}")
+            else:
+                st.info("Conversation history will appear here after your first question.")
+
     try:
         # Check python-docx availability once and show notification
         if 'docx_checked' not in st.session_state:
@@ -190,10 +227,12 @@ def main():
             except Exception as e:
                 st.error(f"Error loading Buck Converter: {e}")
                 st.info("Please refresh the page or try again.")
+            render_llm_assistant()
                 
     except Exception as e:
         st.error(f"Application error: {e}")
         st.info("Please refresh the page. If the problem persists, check the deployment logs.")
+    
 
 if __name__ == "__main__":
     main()
