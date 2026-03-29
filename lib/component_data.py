@@ -10,7 +10,7 @@ from typing import List
 
 @dataclass
 class MOSFET:
-    """MOSFET component specification"""
+    """MOSFET component specification with extended heuristics parameters"""
     name: str
     manufacturer: str
     vds: float  # Drain-Source Voltage (V)
@@ -23,6 +23,14 @@ class MOSFET:
     high_side_ok: bool = True  # Can be used as high-side switch
     low_side_ok: bool = True  # Can be used as low-side switch
     voltage_domain: str = ""  # e.g., "12−24V Robotics"
+    # NEW: Extended heuristics parameters (from MOSFET Design heuristics)
+    vgs_max: float = 20.0  # Max Gate-Source Voltage (V) - 20V for Si, 18V for SiC
+    qgd: float = 0.0  # Gate-Drain Charge (nC) for dv/dt immunity calculation
+    qgs: float = 0.0  # Gate-Source Charge (nC) for dv/dt immunity calculation
+    package_inductance: float = 0.0  # Package inductance (nH) for dv/dt susceptibility
+    junction_temp_max: float = 150.0  # Max junction temperature (°C)
+    rdson_at_125c: float = 0.0  # RDS(on) at 125°C for temperature derating (mΩ)
+    mosfet_type: str = "Si"  # Si or SiC - affects VDS derating factors
 
 @dataclass
 class Capacitor:

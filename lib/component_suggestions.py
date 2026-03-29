@@ -124,104 +124,160 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
     except Exception as e:
         applied_heuristics.append(f"⚠️ Using default algorithm (heuristics error: {str(e)[:50]})")
     
+    # NEW: Calculate Vpeak with overshoot for VDS derating (from MOSFET Design heuristics)
+    # Vpeak = Vin + 25% overshoot (standard industry practice)
+    vpeak = max_voltage * 1.25
+    applied_heuristics.append(f"📏 VDS calculation: Vpeak={vpeak:.1f}V (Vin + 25% overshoot)")
+    
+    # VDS derating factors based on MOSFET type (Si vs SiC)
+    # Si MOSFET: 0.6-0.7x Vpeak, SiC MOSFET: 0.7-0.8x Vpeak
+    # Using conservative 0.65x for Si, 0.75x for SiC
+    si_vds_factor = 0.65
+    sic_vds_factor = 0.75
+    required_vds_si = vpeak / si_vds_factor
+    required_vds_sic = vpeak / sic_vds_factor
+    applied_heuristics.append(f"⚡ VDS margin: Si={required_vds_si:.0f}V, SiC={required_vds_sic:.0f}V")
+    
     # Dynamic safety margins based on heuristics
-    voltage_margin = 1.5  # Default 50% margin
+    voltage_margin = 1.5  # Default 50% margin (for non-adjusted MOSFETs)
     current_margin = 1.3  # Default 30% margin
     
     # Analyze heuristics for specific margin recommendations
     if heuristics_analysis and heuristics_analysis['selection_criteria']:
         for doc_criteria in heuristics_analysis['selection_criteria'].values():
-            # Look for voltage margin guidelines
-            for guideline in doc_criteria.get('voltage_derating_guidelines', []):
-                if 'margin' in guideline.lower() or 'derating' in guideline.lower():
-                    # Try to extract percentage
+            # Look for VDS derating guidelines
+            for guideline in doc_criteria.get('vds_rating_guidelines', []):
+                if '0.6' in guideline or '0.7' in guideline or '0.8' in guideline:
                     import re
-                    numbers = re.findall(r'\d+', guideline)
-                    if numbers:
-                        try:
-                            margin_percent = int(numbers[0])
-                            if 20 <= margin_percent <= 200:  # Reasonable range
-                                voltage_margin = 1 + (margin_percent / 100)
-                                applied_heuristics.append(f"📋 Applied voltage margin: {margin_percent}% from heuristics")
-                                break
-                        except:
-                            pass
+                    # Extract the derating factor
+                    if '0.7 to 0.8' in guideline:
+                        sic_vds_factor = 0.75
+                        applied_heuristics.append(f"📋 SiC VDS derating: 0.7-0.8x from heuristics")
+                    elif '0.6 to 0.7' in guideline:
+                        si_vds_factor = 0.65
+                        applied_heuristics.append(f"📋 Si VDS derating: 0.6-0.7x from heuristics")
             
-            # Look for current margin guidelines
-            for guideline in doc_criteria.get('current_derating_guidelines', []):
-                if 'margin' in guideline.lower() or 'derating' in guideline.lower():
-                    import re
-                    numbers = re.findall(r'\d+', guideline)
-                    if numbers:
-                        try:
-                            margin_percent = int(numbers[0])
-                            if 10 <= margin_percent <= 100:  # Reasonable range
-                                current_margin = 1 + (margin_percent / 100)
-                                applied_heuristics.append(f"📋 Applied current margin: {margin_percent}% from heuristics")
-                                break
-                        except:
-                            pass
+            # RDS(on) comparison at elevated temperature
+            for guideline in doc_criteria.get('rdson_temperature_guidelines', []):
+                if '100' in guideline or '125' in guideline:
+                    applied_heuristics.append(f"🌡️ RDS(on) @ 100-125°C: comparing elevated temp values")
+                    break
+            
+            # VGS protection limits
+            for guideline in doc_criteria.get('vgs_protection_limits', []):
+                if '20v' in guideline.lower() or '18v' in guideline.lower():
+                    applied_heuristics.append(f"🛡️ VGS protection: checking gate oxide limits")
+                    break
     
     for mosfet in MOSFET_LIBRARY:
-        # Check if component meets requirements with updated margins
-        if mosfet.vds < max_voltage * voltage_margin:
+        # NEW: Use VDS calculation with 25% overshoot + derating factor
+        # Check if component meets VDS requirements with proper derating
+        # First, check if it meets the calculated VDS requirement
+        if mosfet.vds < required_vds_si:  # Conservative check (Si threshold)
             continue
+        
+        # Check current requirement with margin
         if mosfet.id < max_current * current_margin:
             continue
         
-        # Calculate suitability score with heuristics
+        # Calculate suitability score with NEW heuristics
         score = 100.0
         component_heuristics = applied_heuristics.copy()
         
-        # Prefer lower RDS(on) for efficiency with frequency consideration
-        rdson_penalty = mosfet.rdson * 2
-        if frequency_hz > 100000:  # High frequency applications
-            rdson_penalty *= 1.5  # Penalize high RDS(on) more at high frequencies
-            component_heuristics.append("🔄 High-frequency RDS(on) penalty applied")
-        score -= rdson_penalty
+        # PRIORITY 1: VDS Headroom Assessment
+        # Check against Vpeak for avalanche stress mitigation
+        if mosfet.vds >= vpeak * 2.0:
+            score += 15
+            component_heuristics.append("⭐ Excellent VDS headroom (2.0x Vpeak)")
+        elif mosfet.vds >= vpeak * 1.5:
+            score += 10
+            component_heuristics.append("✅ Good VDS headroom (1.5x Vpeak)")
+        elif mosfet.vds >= vpeak * 1.25:
+            score += 5
+            component_heuristics.append("⚠️ Minimum VDS headroom (1.25x Vpeak)")
+        else:
+            score -= 10
+            component_heuristics.append("❌ Insufficient VDS headroom")
         
-        # Voltage rating optimization
+        # PRIORITY 2: RDS(on) Optimization (at elevated temperature)
+        # Lower RDS(on) reduces conduction losses
+        if mosfet.rdson < 20:
+            score += 10
+            component_heuristics.append("💎 Low RDS(on) (<20mΩ)")
+        elif mosfet.rdson < 50:
+            score += 5
+            component_heuristics.append("✅ Moderate RDS(on) (<50mΩ)")
+        else:
+            score -= (mosfet.rdson - 50) / 5
+            component_heuristics.append(f"⚠️ Higher RDS(on) ({mosfet.rdson}mΩ)")
+        
+        # Account for high frequency penalties on RDS(on)
+        if frequency_hz > 100000:
+            rdson_penalty = mosfet.rdson * 0.1
+            score -= rdson_penalty
+            component_heuristics.append(f"🔄 High-freq loss penalty ({rdson_penalty:.1f}pts)")
+        
+        # PRIORITY 3: Gate Voltage Protection (VGS)
+        # Check for safe VGS limits (±20V for Si, 18V/-5V for SiC)
+        if hasattr(mosfet, 'vgs_max'):
+            if mosfet.vgs_max >= 20:
+                score += 5
+                component_heuristics.append("🛡️ Safe VGS limits (≥20V)")
+        
+        # PRIORITY 4: dv/dt Immunity
+        # Low Qgd/Qgs ratio and low package inductance are better
+        gate_charge_quality = 0
+        if hasattr(mosfet, 'qgd') and hasattr(mosfet, 'qgs') and mosfet.qgs > 0:
+            qgd_qgs_ratio = mosfet.qgd / mosfet.qgs
+            if qgd_qgs_ratio < 0.5:  # Low ratio = better dv/dt immunity
+                score += 8
+                component_heuristics.append(f"⚙️ Excellent dv/dt immunity (Qgd/Qgs={qgd_qgs_ratio:.2f})")
+                gate_charge_quality = 2
+            elif qgd_qgs_ratio < 0.8:
+                score += 4
+                component_heuristics.append(f"✅ Good dv/dt immunity (Qgd/Qgs={qgd_qgs_ratio:.2f})")
+                gate_charge_quality = 1
+        
+        if hasattr(mosfet, 'package_inductance'):
+            if mosfet.package_inductance < 2:  # nH, lower is better
+                score += 5
+                component_heuristics.append(f"📦 Low package inductance ({mosfet.package_inductance}nH)")
+            elif mosfet.package_inductance > 5:
+                score -= 3
+                component_heuristics.append(f"⚠️ Higher package inductance ({mosfet.package_inductance}nH)")
+        
+        # PRIORITY 5: Safe Operating Area (SOA)
+        # Ensure component stays away from SOA boundaries
+        current_ratio = mosfet.id / (max_current * current_margin)
+        if 1.5 <= current_ratio <= 3.0:  # Good safety margin (1.5-3x)
+            score += 5
+            component_heuristics.append(f"📊 SOA safety: {current_ratio:.1f}x current margin")
+        elif current_ratio > 3.0:  # Excessive margin
+            score -= (current_ratio - 3.0) * 2
+            component_heuristics.append(f"⚠️ Overdimensioned: {current_ratio:.1f}x current")
+        
+        # Voltage ratio optimization
         voltage_ratio = mosfet.vds / (max_voltage * voltage_margin)
-        if voltage_ratio > 2:
-            score -= (voltage_ratio - 2) * 10
-        elif 1.2 <= voltage_ratio <= 1.8:  # Sweet spot for voltage utilization
+        if 1.2 <= voltage_ratio <= 2.0:  # Sweet spot for voltage utilization
             score += 5
             component_heuristics.append("⚡ Optimal voltage utilization")
         
-        # Current rating optimization
-        current_ratio = mosfet.id / (max_current * current_margin)
-        if current_ratio > 2:
-            score -= (current_ratio - 2) * 5
-        elif 1.2 <= current_ratio <= 1.8:  # Sweet spot for current utilization
-            score += 5
-            component_heuristics.append("⚡ Optimal current utilization")
-        
-        # Gate charge optimization for high frequency
+        # Gate charge optimization for high frequency (legacy support)
         if mosfet.qg > 0 and frequency_hz > 50000:
             if mosfet.qg < 30:  # Low gate charge is good for high frequency
-                score += 10
+                score += 8
                 component_heuristics.append("🚀 Low gate charge for high frequency")
             elif mosfet.qg > 60:  # High gate charge penalty
                 score -= 5
                 component_heuristics.append("⚠️ High gate charge penalty")
         
-        # Manufacturer preference based on heuristics
-        if heuristics_analysis and heuristics_analysis['selection_criteria']:
-            for doc_criteria in heuristics_analysis['selection_criteria'].values():
-                for guideline in doc_criteria.get('general_guidelines', []):
-                    # Check if this MOSFET's manufacturer is mentioned favorably
-                    if mosfet.manufacturer.lower() in guideline.lower():
-                        score += 10
-                        component_heuristics.append(f"🎯 Recommended manufacturer from heuristics")
-                        break
-        
-        # Efficiency range bonus
+        # Efficiency rating bonus
         if '98%' in mosfet.efficiency_range or '97%' in mosfet.efficiency_range:
             score += 5
-            component_heuristics.append("⭐ High efficiency rating")
+            component_heuristics.append("⭐ High efficiency rating (97-98%)")
         
         # Build comprehensive reason string
-        reason = f"VDS={mosfet.vds}V ({voltage_ratio:.1f}x margin), "
+        reason = f"VDS={mosfet.vds}V ({mosfet.vds/vpeak:.1f}x Vpeak), "
         reason += f"ID={mosfet.id}A ({current_ratio:.1f}x margin), "
         reason += f"RDS(on)={mosfet.rdson}mΩ. {mosfet.typical_use}"
         

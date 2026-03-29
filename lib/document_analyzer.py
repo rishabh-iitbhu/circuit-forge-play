@@ -372,6 +372,8 @@ def analyze_capacitor_heuristics() -> Dict[str, Any]:
 def analyze_mosfet_content(content: str) -> Dict[str, List[str]]:
     """
     Analyze document content to extract MOSFET selection criteria
+    Incorporates new heuristics: VDS derating, RDS(on) temperature, VGS limits,
+    dv/dt immunity (Qgd/Qgs & package inductance), and SOA considerations
     
     Args:
         content: Text content of the document
@@ -380,13 +382,19 @@ def analyze_mosfet_content(content: str) -> Dict[str, List[str]]:
         Dictionary with extracted criteria
     """
     criteria = {
-        'voltage_derating_guidelines': [],
+        'vds_rating_guidelines': [],
+        'vds_overshoot_calculation': [],
+        'rdson_temperature_guidelines': [],
+        'vgs_protection_limits': [],
+        'dvdt_immunity_guidelines': [],
+        'qgd_qgs_considerations': [],
+        'package_inductance_guidelines': [],
+        'soa_safety_margins': [],
         'current_derating_guidelines': [],
-        'rdson_optimization': [],
         'gate_charge_considerations': [],
         'thermal_guidelines': [],
         'package_selection': [],
-        'efficiency_optimization': [],
+        'avalanche_stress_mitigation': [],
         'application_specific': [],
         'general_guidelines': []
     }
@@ -400,33 +408,62 @@ def analyze_mosfet_content(content: str) -> Dict[str, List[str]]:
         if not line_lower:
             continue
             
-        # Voltage derating
-        if any(keyword in line_lower for keyword in ['voltage', 'vds', 'derating', 'margin', 'breakdown']):
-            criteria['voltage_derating_guidelines'].append(line.strip())
+        # VDS rating and overshoot
+        if any(keyword in line_lower for keyword in ['vpeak', 'overshoot', 'vds', '25%', '0.6 to 0.7', '0.7 to 0.8']):
+            if 'vpeak' in line_lower or 'overshoot' in line_lower or '25%' in line_lower:
+                criteria['vds_overshoot_calculation'].append(line.strip())
+            elif '0.6' in line_lower or '0.7' in line_lower or '0.8' in line_lower:
+                criteria['vds_rating_guidelines'].append(line.strip())
+            else:
+                criteria['vds_rating_guidelines'].append(line.strip())
+        
+        # RDS(on) temperature considerations
+        elif any(keyword in line_lower for keyword in ['rdson', 'rds(on)', '100-125c', '100°c', '125°c', 'temperature']):
+            if ('rdson' in line_lower or 'rds(on)' in line_lower) and ('temperature' in line_lower or 'temp' in line_lower or '100' in line_lower):
+                criteria['rdson_temperature_guidelines'].append(line.strip())
+            elif 'rdson' in line_lower or 'rds(on)' in line_lower:
+                criteria['rdson_temperature_guidelines'].append(line.strip())
+        
+        # VGS protection
+        elif any(keyword in line_lower for keyword in ['vgs', 'gate', '20v', '18v', 'oxide']):
+            if 'vgs' in line_lower or ('gate' in line_lower and ('20' in line_lower or '18' in line_lower)):
+                criteria['vgs_protection_limits'].append(line.strip())
+            elif 'oxide' in line_lower:
+                criteria['vgs_protection_limits'].append(line.strip())
+        
+        # dv/dt and Miller coupling
+        elif any(keyword in line_lower for keyword in ['dv/dt', 'miller', 'induced', 'qgd', 'qgs']):
+            if 'qgd' in line_lower or 'qgs' in line_lower:
+                criteria['qgd_qgs_considerations'].append(line.strip())
+            else:
+                criteria['dvdt_immunity_guidelines'].append(line.strip())
+        
+        # Package inductance
+        elif any(keyword in line_lower for keyword in ['package inductance', 'package', 'inductance', 'ringing']):
+            if 'inductance' in line_lower:
+                criteria['package_inductance_guidelines'].append(line.strip())
+            else:
+                criteria['package_selection'].append(line.strip())
+        
+        # Safe Operating Area
+        elif any(keyword in line_lower for keyword in ['soa', 'safe operating area', 'boundary', 'pulse duration']):
+            criteria['soa_safety_margins'].append(line.strip())
+        
+        # Avalanche stress
+        elif any(keyword in line_lower for keyword in ['avalanche', 'layout variations', 'di/dt']):
+            criteria['avalanche_stress_mitigation'].append(line.strip())
         
         # Current derating
-        elif any(keyword in line_lower for keyword in ['current', 'id', 'ampere', 'amp', 'derating']):
+        elif any(keyword in line_lower for keyword in ['current', 'id', 'ampere', 'amp', 'ioutrms']):
             criteria['current_derating_guidelines'].append(line.strip())
         
-        # RDS(on) optimization
-        elif any(keyword in line_lower for keyword in ['rdson', 'rds(on)', 'resistance', 'efficiency', 'loss']):
-            criteria['rdson_optimization'].append(line.strip())
-        
-        # Gate charge
-        elif any(keyword in line_lower for keyword in ['gate', 'qg', 'qgs', 'qgd', 'charge', 'driver']):
+        # Gate charge (legacy)
+        elif any(keyword in line_lower for keyword in ['gate', 'qg', 'charge', 'driver']):
             criteria['gate_charge_considerations'].append(line.strip())
         
         # Thermal
-        elif any(keyword in line_lower for keyword in ['thermal', 'temperature', 'heat', 'cooling', 'junction']):
+        elif any(keyword in line_lower for keyword in ['thermal', 'heat', 'cooling', 'junction']):
             criteria['thermal_guidelines'].append(line.strip())
-        
-        # Package
-        elif any(keyword in line_lower for keyword in ['package', 'so-8', 'to-220', 'd2pak', 'surface mount']):
-            criteria['package_selection'].append(line.strip())
-        
-        # Efficiency
-        elif any(keyword in line_lower for keyword in ['efficiency', 'loss', 'switching', 'conduction']):
-            criteria['efficiency_optimization'].append(line.strip())
         
         # Application specific
         elif any(keyword in line_lower for keyword in ['buck', 'boost', 'converter', 'pfc', 'application']):
@@ -514,6 +551,8 @@ def analyze_capacitor_content(content: str) -> Dict[str, List[str]]:
 def generate_updated_mosfet_recommendations(selection_criteria: Dict[str, Dict]) -> List[str]:
     """
     Generate updated MOSFET recommendations based on analyzed criteria
+    Now includes new heuristics: VDS derating, RDS(on) temperature, VGS limits,
+    dv/dt immunity, and SOA safety margins
     
     Args:
         selection_criteria: Analyzed criteria from documents
@@ -531,21 +570,45 @@ def generate_updated_mosfet_recommendations(selection_criteria: Dict[str, Dict])
                 all_criteria[category] = []
             all_criteria[category].extend(items)
     
-    # Generate recommendations based on found criteria
-    if all_criteria.get('voltage_derating_guidelines'):
-        recommendations.append("✅ Voltage Derating: " + "; ".join(all_criteria['voltage_derating_guidelines'][:2]))
+    # Generate recommendations based on new heuristics hierarchy
+    # Priority 1: VDS Rating (critical for survivability)
+    if all_criteria.get('vds_overshoot_calculation'):
+        recommendations.append("⚡ VDS Overshoot: " + all_criteria['vds_overshoot_calculation'][0][:60])
+    elif all_criteria.get('vds_rating_guidelines'):
+        recommendations.append("⚡ VDS Rating: " + all_criteria['vds_rating_guidelines'][0][:60])
     
+    # Priority 2: RDS(on) Temperature Considerations
+    if all_criteria.get('rdson_temperature_guidelines'):
+        recommendations.append("🌡️ RDS(on) @ 100-125°C: " + all_criteria['rdson_temperature_guidelines'][0][:60])
+    
+    # Priority 3: VGS Protection
+    if all_criteria.get('vgs_protection_limits'):
+        recommendations.append("🛡️ VGS Protection: " + all_criteria['vgs_protection_limits'][0][:60])
+    
+    # Priority 4: dv/dt Immunity
+    if all_criteria.get('qgd_qgs_considerations'):
+        recommendations.append("⚙️ dv/dt Immunity: " + all_criteria['qgd_qgs_considerations'][0][:60])
+    elif all_criteria.get('dvdt_immunity_guidelines'):
+        recommendations.append("⚙️ Miller dv/dt: " + all_criteria['dvdt_immunity_guidelines'][0][:60])
+    
+    # Priority 5: Package Inductance
+    if all_criteria.get('package_inductance_guidelines'):
+        recommendations.append("📦 Package Inductance: " + all_criteria['package_inductance_guidelines'][0][:60])
+    
+    # Priority 6: Safe Operating Area
+    if all_criteria.get('soa_safety_margins'):
+        recommendations.append("📊 SOA Margin: " + all_criteria['soa_safety_margins'][0][:60])
+    
+    # Priority 7: Avalanche Stress Mitigation
+    if all_criteria.get('avalanche_stress_mitigation'):
+        recommendations.append("⚠️ Avalanche Headroom: " + all_criteria['avalanche_stress_mitigation'][0][:60])
+    
+    # Legacy: Current and Gate Charge
     if all_criteria.get('current_derating_guidelines'):
-        recommendations.append("✅ Current Derating: " + "; ".join(all_criteria['current_derating_guidelines'][:2]))
-    
-    if all_criteria.get('rdson_optimization'):
-        recommendations.append("✅ RDS(on) Optimization: " + "; ".join(all_criteria['rdson_optimization'][:2]))
+        recommendations.append("📌 Current Derating: " + all_criteria['current_derating_guidelines'][0][:60])
     
     if all_criteria.get('gate_charge_considerations'):
-        recommendations.append("✅ Gate Charge: " + "; ".join(all_criteria['gate_charge_considerations'][:2]))
-    
-    if all_criteria.get('application_specific'):
-        recommendations.append("✅ Applications: " + "; ".join(all_criteria['application_specific'][:2]))
+        recommendations.append("🔋 Gate Charge: " + all_criteria['gate_charge_considerations'][0][:60])
     
     return recommendations
 

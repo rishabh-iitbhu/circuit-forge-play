@@ -220,6 +220,19 @@ def display_component_table(suggestions: List[ComponentSuggestion], component_ty
                     st.write(f"**Package:** {getattr(comp, 'package', 'N/A')}")
                     if hasattr(comp, 'efficiency_range'):
                         st.write(f"**Expected Efficiency:** {comp.efficiency_range}")
+                    
+                    # NEW: Extended heuristics parameters display
+                    if hasattr(comp, 'vgs_max'):
+                        st.write(f"**Max Gate-Source Voltage (VGS):** ±{getattr(comp, 'vgs_max', 'N/A')} V")
+                    if hasattr(comp, 'rdson_at_125c') and getattr(comp, 'rdson_at_125c', 0) > 0:
+                        st.write(f"**RDS(on) @ 125°C:** {comp.rdson_at_125c} mΩ")
+                    if hasattr(comp, 'mosfet_type'):
+                        st.write(f"**MOSFET Type:** {getattr(comp, 'mosfet_type', 'Si')}")
+                    if hasattr(comp, 'qgd') and getattr(comp, 'qgd', 0) > 0 and hasattr(comp, 'qgs') and getattr(comp, 'qgs', 0) > 0:
+                        qgd_qgs_ratio = comp.qgd / comp.qgs if comp.qgs > 0 else 0
+                        st.write(f"**Gate Charge Ratio (Qgd/Qgs):** {qgd_qgs_ratio:.2f}")
+                    if hasattr(comp, 'package_inductance') and getattr(comp, 'package_inductance', 0) > 0:
+                        st.write(f"**Package Inductance:** {comp.package_inductance} nH")
                 
                 elif component_type in ['capacitor', 'output_capacitor']:
                     st.write(f"**Capacitance:** {getattr(comp, 'capacitance', 'N/A')} µF")
@@ -249,6 +262,12 @@ def display_component_table(suggestions: List[ComponentSuggestion], component_ty
                 # Selection reasoning
                 st.write("**Why This Component:**")
                 st.info(selected_component.reason)
+                
+                # Applied heuristics (NEW)
+                if selected_component.heuristics_applied:
+                    st.write("**Applied Design Heuristics:**")
+                    for heuristic in selected_component.heuristics_applied[:5]:  # Show top 5 heuristics
+                        st.caption(f"✅ {heuristic}")
             
             with col2:
                 st.write("**📍 Purchase Information**")
