@@ -1,6 +1,31 @@
 """
 Circuit Designer Pro - Streamlit Application
 Main application file for circuit design with PFC and Buck converter calculators
+
+AUTOMATIC DEPLOYMENT PROCESS:
+===========================
+This app is automatically deployed to Streamlit Cloud via GitHub Actions.
+
+Deployment Triggers:
+- Push to 'main' branch: Production deployment
+- Push to 'feature/web-component-search': Feature testing deployment
+- PR merge to main: Automatic deployment after validation
+
+Workflow: .github/workflows/deploy-streamlit.yml
+- Validates code and dependencies
+- Runs basic import tests
+- Streamlit Cloud auto-detects changes and redeploys
+- Live URL: https://circuit-forge-play-app31.streamlit.app/
+
+Required Secrets (configure in Streamlit Cloud app settings):
+- OPENAI_API_KEY: For LLM assistant functionality
+- Other API keys as needed (see .streamlit/secrets.example.toml)
+
+To trigger deployment:
+1. Commit and push changes to the repository
+2. GitHub Actions will validate and prepare for deployment
+3. Streamlit Cloud will automatically redeploy the app
+4. Check deployment status in Streamlit Cloud dashboard
 """
 
 import streamlit as st
