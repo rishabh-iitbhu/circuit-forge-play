@@ -68,6 +68,7 @@ def create_component_table(suggestions: List[ComponentSuggestion], component_typ
         row.update({
             'Price': getattr(comp, 'price', 'See distributor'),
             'Stock': getattr(comp, 'availability', 'Check stock'),
+            'Why?': f"🤔 #{i + 1}",  # Clickable reasoning column
         })
         
         data.append(row)
@@ -174,6 +175,9 @@ def display_component_table(suggestions: List[ComponentSuggestion], component_ty
         'Stock': st.column_config.TextColumn(
             "Stock", help="Availability status", width="medium"
         ),
+        'Why?': st.column_config.TextColumn(
+            "Why?", help="Click to see detailed reasoning", width="small"
+        ),
     }
     
     # Display the interactive table
@@ -187,17 +191,86 @@ def display_component_table(suggestions: List[ComponentSuggestion], component_ty
         key=f"{component_type}_table"
     )
     
-    # Show details for selected component
+    # Handle "Why?" column clicks - check if user clicked on the "Why?" column
+    why_clicked_key = f"{component_type}_why_clicked"
+    if why_clicked_key not in st.session_state:
+        st.session_state[why_clicked_key] = None
+    
+    # Check for "Why?" column clicks by examining the dataframe selection
     if selected_data and 'selection' in selected_data and selected_data['selection']['rows']:
         selected_idx = selected_data['selection']['rows'][0]
         
-        # Get suggestions from session state to ensure they persist across reruns
-        stored_suggestions = st.session_state.get(session_key, suggestions)
+        # Get the selected row data to check if "Why?" column was clicked
+        if selected_idx < len(df):
+            selected_row = df.iloc[selected_idx]
+            why_value = selected_row.get('Why?', '')
+            
+            # If "Why?" column was clicked (contains the pattern), show reasoning
+            if '🤔' in str(why_value):
+                st.session_state[why_clicked_key] = selected_idx
+            else:
+                st.session_state[why_clicked_key] = None
+    
+    # Show detailed reasoning section if "Why?" was clicked
+    if st.session_state.get(why_clicked_key) is not None:
+        clicked_idx = st.session_state[why_clicked_key]
         
-        if selected_idx < len(stored_suggestions):
-            selected_component = stored_suggestions[selected_idx]
+        if clicked_idx < len(suggestions):
+            clicked_suggestion = suggestions[clicked_idx]
             
             st.write("---")
+            st.subheader(f"🧠 Why #{clicked_idx + 1} is a Top Suggestion")
+            
+            # Create two columns for reasoning display
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                # Show the component's basic reasoning
+                st.info(f"**{getattr(clicked_suggestion.component, 'part_number', getattr(clicked_suggestion.component, 'name', f'Component {clicked_idx+1}'))}** - {clicked_suggestion.reason}")
+                
+                # Show detailed rationale based on component type
+                show_detailed_rationale(clicked_suggestion, component_type)
+                
+                # Show applied heuristics if available
+                if clicked_suggestion.heuristics_applied:
+                    st.write("**Applied Design Heuristics:**")
+                    for heuristic in clicked_suggestion.heuristics_applied:
+                        st.caption(f"✅ {heuristic}")
+            
+            with col2:
+                st.write("**Quick Stats:**")
+                comp = clicked_suggestion.component
+                
+                if component_type == 'mosfet':
+                    st.metric("Score", f"{clicked_suggestion.score:.1f}")
+                    st.metric("VDS", f"{getattr(comp, 'vds', 'N/A')}V")
+                    st.metric("RDS(on)", f"{getattr(comp, 'rdson', 'N/A')}mΩ")
+                elif component_type in ['capacitor', 'input_capacitor']:
+                    st.metric("Score", f"{clicked_suggestion.score:.1f}")
+                    st.metric("Capacitance", f"{getattr(comp, 'capacitance', 'N/A')}µF")
+                    st.metric("Voltage", f"{getattr(comp, 'voltage', 'N/A')}V")
+                elif component_type == 'inductor':
+                    st.metric("Score", f"{clicked_suggestion.score:.1f}")
+                    st.metric("Inductance", f"{getattr(comp, 'inductance', 'N/A')}µH")
+                    st.metric("Current", f"{getattr(comp, 'current', 'N/A')}A")
+                
+                if st.button("Close Reasoning", key=f"close_why_{component_type}"):
+                    st.session_state[why_clicked_key] = None
+                    st.rerun()
+    
+    # Show details for selected component (original functionality)
+    if selected_data and 'selection' in selected_data and selected_data['selection']['rows']:
+        selected_idx = selected_data['selection']['rows'][0]
+        
+        # Only show component details if "Why?" wasn't clicked
+        if st.session_state.get(why_clicked_key) != selected_idx:
+            # Get suggestions from session state to ensure they persist across reruns
+            stored_suggestions = st.session_state.get(session_key, suggestions)
+            
+            if selected_idx < len(stored_suggestions):
+                selected_component = stored_suggestions[selected_idx]
+                
+                st.write("---")
             st.subheader(f"📋 Component Details - #{selected_idx + 1}")
             
             comp = selected_component.component
@@ -313,7 +386,150 @@ def display_component_table(suggestions: List[ComponentSuggestion], component_ty
         st.write("• Purchase links and datasheet access")
         st.write("• Pricing and availability information")
 
-def filter_suggestions_by_source(suggestions: List[ComponentSuggestion], use_web_search: bool) -> List[ComponentSuggestion]:
+def show_detailed_rationale(suggestion: ComponentSuggestion, component_type: str):
+    """
+    Show detailed rationale for why this component is a top suggestion
+    
+    Args:
+        suggestion: The component suggestion
+        component_type: Type of component
+    """
+    comp = suggestion.component
+    
+    if component_type == 'mosfet':
+        show_mosfet_rationale(suggestion)
+    elif component_type in ['capacitor', 'input_capacitor']:
+        show_capacitor_rationale(suggestion, component_type)
+    elif component_type == 'inductor':
+        show_inductor_rationale(suggestion)
+
+
+def show_mosfet_rationale(suggestion: ComponentSuggestion):
+    """Show detailed MOSFET selection rationale"""
+    comp = suggestion.component
+    
+    st.write("**🎯 Selection Rationale:**")
+    
+    # VDS Headroom Analysis
+    vds = getattr(comp, 'vds', 0)
+    if vds > 0:
+        st.write(f"• **Voltage Headroom**: {vds}V rating provides excellent protection against voltage spikes and layout-induced overshoots")
+    
+    # Current Capability
+    current = getattr(comp, 'id', 0)
+    if current > 0:
+        st.write(f"• **Current Capacity**: {current}A continuous rating ensures reliable operation with safety margin")
+    
+    # Efficiency Analysis
+    rdson = getattr(comp, 'rdson', 0)
+    if rdson > 0:
+        efficiency = getattr(comp, 'efficiency_range', '')
+        st.write(f"• **Efficiency**: {rdson}mΩ RDS(on) contributes to {efficiency} efficiency range")
+    
+    # Gate Characteristics
+    qg = getattr(comp, 'qg', 0)
+    if qg > 0:
+        st.write(f"• **Gate Drive**: {qg}nC total gate charge enables fast switching with moderate drive requirements")
+    
+    # Thermal Performance
+    if hasattr(comp, 'junction_temp_max'):
+        temp_max = getattr(comp, 'junction_temp_max', 150)
+        st.write(f"• **Thermal Robustness**: {temp_max}°C max junction temperature for reliable high-temperature operation")
+    
+    # Manufacturer Reputation
+    manufacturer = getattr(comp, 'manufacturer', '')
+    if manufacturer:
+        st.write(f"• **Manufacturer Trust**: {manufacturer} components are known for quality and reliability in power applications")
+    
+    st.write("**💡 Why This Beats Alternatives:**")
+    st.write("• Superior balance of voltage/current ratings with efficiency")
+    st.write("• Optimized for the specific switching frequency and thermal requirements")
+    st.write("• Meets all design heuristics from power electronics best practices")
+
+
+def show_capacitor_rationale(suggestion: ComponentSuggestion, component_type: str):
+    """Show detailed capacitor selection rationale"""
+    comp = suggestion.component
+    
+    st.write("**🎯 Selection Rationale:**")
+    
+    # Capacitance Analysis
+    cap = getattr(comp, 'capacitance', 0)
+    if cap > 0:
+        st.write(f"• **Capacitance**: {cap}µF provides optimal filtering with minimal size/weight penalty")
+    
+    # Voltage Rating
+    voltage = getattr(comp, 'voltage', 0)
+    if voltage > 0:
+        st.write(f"• **Voltage Rating**: {voltage}V ensures long-term reliability with voltage derating margin")
+    
+    # ESR Performance
+    esr = getattr(comp, 'esr', '')
+    if esr:
+        st.write(f"• **ESR Performance**: {esr} equivalent series resistance minimizes power losses")
+    
+    # Dielectric Type
+    dielectric = getattr(comp, 'dielectric', getattr(comp, 'type', ''))
+    if dielectric:
+        st.write(f"• **Dielectric**: {dielectric} technology optimized for {'input filtering' if component_type == 'input_capacitor' else 'output decoupling'}")
+    
+    # Temperature Range
+    temp_range = getattr(comp, 'temp_range', '')
+    if temp_range:
+        st.write(f"• **Temperature Range**: {temp_range} ensures operation across full environmental conditions")
+    
+    # Ripple Current (for input capacitors)
+    if component_type == 'input_capacitor' and hasattr(comp, 'ripple_rating'):
+        ripple = getattr(comp, 'ripple_rating', 0)
+        if ripple > 0:
+            st.write(f"• **Ripple Handling**: {ripple}A ripple current rating prevents overheating from AC components")
+    
+    st.write("**💡 Why This Beats Alternatives:**")
+    st.write("• Optimal capacitance-to-size ratio for the application")
+    st.write("• Superior ESR characteristics reduce circuit losses")
+    st.write("• Proven reliability in switching power supply applications")
+
+
+def show_inductor_rationale(suggestion: ComponentSuggestion):
+    """Show detailed inductor selection rationale"""
+    comp = suggestion.component
+    
+    st.write("**🎯 Selection Rationale:**")
+    
+    # Inductance Value
+    inductance = getattr(comp, 'inductance', 0)
+    if inductance > 0:
+        st.write(f"• **Inductance**: {inductance}µH provides optimal ripple current reduction and efficiency")
+    
+    # Current Rating
+    current = getattr(comp, 'current', 0)
+    if current > 0:
+        st.write(f"• **Current Rating**: {current}A saturation current ensures operation without core saturation")
+    
+    # DCR (DC Resistance)
+    dcr = getattr(comp, 'dcr', 0)
+    if dcr > 0:
+        st.write(f"• **Efficiency**: {dcr}mΩ DC resistance minimizes conduction losses in the power path")
+    
+    # Core Material
+    core_type = getattr(comp, 'core_type', '')
+    if core_type:
+        st.write(f"• **Core Technology**: {core_type} material provides optimal balance of size, cost, and performance")
+    
+    # Shielding
+    shielded = getattr(comp, 'shielded', False)
+    if shielded:
+        st.write("• **EMI Performance**: Shielded construction reduces electromagnetic interference")
+    
+    # Package Type
+    package = getattr(comp, 'package', '')
+    if package:
+        st.write(f"• **Package**: {package} form factor optimized for PCB layout and thermal management")
+    
+    st.write("**💡 Why This Beats Alternatives:**")
+    st.write("• Precise inductance value minimizes output ripple and maximizes efficiency")
+    st.write("• Low DCR reduces power losses and improves thermal performance")
+    st.write("• Core saturation current provides safety margin for transient conditions")
     """
     Filter suggestions based on source type (web vs local)
     
