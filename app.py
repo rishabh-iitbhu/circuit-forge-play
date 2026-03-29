@@ -26,6 +26,8 @@ To trigger deployment:
 2. GitHub Actions will validate and prepare for deployment
 3. Streamlit Cloud will automatically redeploy the app
 4. Check deployment status in Streamlit Cloud dashboard
+
+Last deployment: 2026-03-29 11:25:08 (deployment automation setup)
 """
 
 import streamlit as st
