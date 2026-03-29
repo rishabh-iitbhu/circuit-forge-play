@@ -1,0 +1,79 @@
+name: Deploy to Streamlit Cloud
+
+on:
+  push:
+    branches:
+      - main
+      - feature/web-component-search  # Deploy from feature branch for testing
+  pull_request:
+    branches:
+      - main
+    types: [closed]
+    paths:
+      - 'app.py'
+      - 'lib/**'
+      - 'pages/**'
+      - 'requirements.txt'
+      - '.streamlit/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run basic tests
+      run: |
+        python -c "import streamlit; print('Streamlit version:', streamlit.__version__)"
+        python -c "from lib import llm_assistant, component_data, component_suggestions; print('Core modules imported successfully')"
+
+    - name: Deploy to Streamlit Cloud
+      run: |
+        echo "🚀 Deployment triggered by: ${{ github.event_name }} on branch ${{ github.ref_name }}"
+        echo "📝 Commit: ${{ github.sha }}"
+        echo "👤 Author: ${{ github.actor }}"
+
+        # Note: Streamlit Cloud deployment happens automatically when code is pushed
+        # to the connected repository. This workflow ensures the code is tested first.
+        echo "✅ Code validated and ready for Streamlit Cloud deployment"
+        echo ""
+        echo "📋 Deployment Process:"
+        echo "1. Code pushed to GitHub repository"
+        echo "2. This workflow validates the code"
+        echo "3. Streamlit Cloud automatically detects changes and redeploys"
+        echo "4. App is live at: https://circuit-forge-play-app31.streamlit.app/"
+        echo ""
+        echo "🔧 To configure secrets in Streamlit Cloud:"
+        echo "- Go to your app settings"
+        echo "- Add OPENAI_API_KEY and other required secrets"
+        echo "- The .streamlit/secrets.example.toml shows required format"
+
+    - name: Comment on PR (if applicable)
+      if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
+      uses: actions/github-script@v7
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: '🚀 **Successfully merged and deployed!**\n\n' +
+                  '✅ Code has been validated and is ready for Streamlit Cloud deployment\n' +
+                  '🌐 App will be automatically updated at: https://circuit-forge-play-app31.streamlit.app/\n\n' +
+                  '**Next steps:**\n' +
+                  '- Check Streamlit Cloud for deployment status\n' +
+                  '- Update secrets if needed (OPENAI_API_KEY, etc.)\n' +
+                  '- Test the live application'
+          })

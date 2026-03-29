@@ -1,10 +1,41 @@
 """
 Circuit Designer Pro - Streamlit Application
 Main application file for circuit design with PFC and Buck converter calculators
+
+AUTOMATIC DEPLOYMENT PROCESS:
+===========================
+This app is automatically deployed to Streamlit Cloud via GitHub Actions.
+
+Deployment Triggers:
+- Push to 'main' branch: Production deployment
+- Push to 'feature/web-component-search': Feature testing deployment
+- PR merge to main: Automatic deployment after validation
+
+Workflow: .github/workflows/deploy-streamlit.yml
+- Validates code and dependencies
+- Runs basic import tests
+- Streamlit Cloud auto-detects changes and redeploys
+- Live URL: https://circuit-forge-play-app31.streamlit.app/
+
+Required Secrets (configure in Streamlit Cloud app settings):
+- OPENAI_API_KEY: For LLM assistant functionality
+- Other API keys as needed (see .streamlit/secrets.example.toml)
+
+To trigger deployment:
+1. Commit and push changes to the repository
+2. GitHub Actions will validate and prepare for deployment
+3. Streamlit Cloud will automatically redeploy the app
+4. Check deployment status in Streamlit Cloud dashboard
+
+Last deployment: 2026-03-29 11:25:08 (deployment automation setup)
 """
 
 import streamlit as st
 
+from lib.llm_assistant import LLMAgent
+
+# Instantiate once so session state can reuse
+assistant_agent = LLMAgent()
 # Page configuration
 st.set_page_config(
     page_title="Circuit Designer Pro",
@@ -102,6 +133,39 @@ except ImportError as e:
 def main():
     """Main application entry point"""
     
+    def render_llm_assistant():
+        """Render the expandable assistant chat UI"""
+
+        if 'llm_history' not in st.session_state:
+            st.session_state.llm_history = []
+
+        if 'llm_query' not in st.session_state:
+            st.session_state.llm_query = ""
+
+        with st.expander("💬 Circuit Forge Intelligence", expanded=False):
+            st.caption("Ask for calculations, component lookup, or heuristic summaries. OpenAI function calling powers the answers if configured.")
+            user_prompt = st.text_input(
+                "",
+                key="llm_query",
+                placeholder="e.g. Recommend a MOSFET for a 48V/10A buck.",
+                label_visibility="collapsed",
+            )
+
+            if st.button("Send", key="llm_send") and user_prompt.strip():
+                response = assistant_agent.query(user_prompt.strip(), st.session_state.llm_history)
+                st.session_state.llm_history.extend([
+                    {"role": "user", "content": user_prompt.strip()},
+                    {"role": "assistant", "content": response},
+                ])
+                st.session_state.llm_query = ""
+
+            if st.session_state.llm_history:
+                for message in st.session_state.llm_history[-6:]:
+                    role = "You" if message["role"] == "user" else "Assistant"
+                    st.markdown(f"**{role}:** {message['content']}")
+            else:
+                st.info("Conversation history will appear here after your first question.")
+
     try:
         # Check python-docx availability once and show notification
         if 'docx_checked' not in st.session_state:
@@ -130,6 +194,28 @@ def main():
             with col2b:
                 if st.button("🔬 Simulation Demo", type="secondary", use_container_width=True):
                     st.session_state.page = "Simulation Demo"
+        
+        # Component Source Selection
+        st.markdown("---")
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            component_source = st.radio(
+                "🔧 Component Data Source",
+                ["📊 Local Database", "🌐 Web Search (Mouser + Digikey)"],
+                horizontal=True,
+                help="Choose between local component database or live web search from major distributors"
+            )
+            
+            # Store selection in session state
+            st.session_state.component_source = "web" if "Web Search" in component_source else "local"
+            
+            # Show additional info based on selection
+            if st.session_state.component_source == "web":
+                st.info("🌐 **Web Search Mode**: Search live inventory from Mouser (Digikey temporarily disabled due to rate limits) for current pricing and availability", icon="ℹ️")
+            else:
+                st.info("📊 **Local Database Mode**: Use curated component database with design heuristics", icon="ℹ️")
+        
+        st.markdown("---")
         
         # Main navigation for circuit types only
         selected = st.radio(
@@ -168,10 +254,12 @@ def main():
             except Exception as e:
                 st.error(f"Error loading Buck Converter: {e}")
                 st.info("Please refresh the page or try again.")
+            render_llm_assistant()
                 
     except Exception as e:
         st.error(f"Application error: {e}")
         st.info("Please refresh the page. If the problem persists, check the deployment logs.")
+    
 
 if __name__ == "__main__":
     main()

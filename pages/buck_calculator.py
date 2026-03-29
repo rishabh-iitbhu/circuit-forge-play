@@ -278,21 +278,27 @@ def show():
         # Calculate current
         max_current = inputs.p_out_max / inputs.v_out_min
         
+        # Check component source preference
+        use_web_search = st.session_state.get('component_source', 'local') == 'web'
+        
         # Get suggestions with enhanced heuristics
         mosfet_suggestions = suggest_mosfets(
             max_voltage=inputs.v_in_max, 
             max_current=max_current,
-            frequency_hz=switching_freq
+            frequency_hz=switching_freq,
+            use_web_search=use_web_search
         )
         output_cap_suggestions = suggest_capacitors(
             required_capacitance_uf=results.output_capacitance * 1e6, 
             max_voltage=inputs.v_out_max,
-            frequency_hz=switching_freq
+            frequency_hz=switching_freq,
+            use_web_search=use_web_search
         )
         inductor_suggestions = suggest_inductors(
             required_inductance_uh=results.inductance * 1e6, 
             max_current=max_current,
-            frequency_hz=switching_freq
+            frequency_hz=switching_freq,
+            use_web_search=use_web_search
         )
         
         # Get input capacitor suggestions
@@ -302,7 +308,8 @@ def show():
             required_capacitance_uf=results.input_capacitance * 1e6,
             max_voltage=inputs.v_in_max,
             ripple_current_a=input_ripple_current,
-            frequency_hz=switching_freq
+            frequency_hz=switching_freq,
+            use_web_search=use_web_search
         )
         
         # Enhanced debug information for inductor selection
@@ -313,94 +320,38 @@ def show():
         st.info(f"📊 **Available Inductors:** 220µH-10000µH, Current: 0.48A-4.5A. "
                f"Your requirements {'✅ match' if (220 <= results.inductance * 1e6 <= 10000 and max_current <= 4.5) else '❌ exceed'} available range.")
         
-        # Display in tabs
-        tab1, tab2, tab3, tab4 = st.tabs(["💻 MOSFETs", "� Input Capacitors", "📤 Output Capacitors", "🧲 Inductors"])
+        # Use new standardized display system
+        from lib.component_display import display_component_table, filter_suggestions_by_source
+        
+        # Filter suggestions based on search mode
+        use_web_search = st.session_state.get('component_source', 'local') == 'web'
+        
+        # Display in tabs with new standardized format
+        tab1, tab2, tab3, tab4 = st.tabs(["💻 MOSFETs", "📥 Input Capacitors", "📤 Output Capacitors", "🧲 Inductors"])
         
         with tab1:
-            if mosfet_suggestions:
-                for idx, suggestion in enumerate(mosfet_suggestions):
-                    mosfet = suggestion.component
-                    with st.expander(f"#{idx+1} {mosfet.name} - {mosfet.manufacturer}", expanded=idx==0):
-                        col1, col2 = st.columns([2, 1])
-                        with col1:
-                            st.markdown(f"**VDS:** {mosfet.vds}V | **ID:** {mosfet.id}A | **RDS(on):** {mosfet.rdson}mΩ")
-                            st.markdown(f"**Qg:** {mosfet.qg}nC | **Package:** {mosfet.package}")
-                            st.markdown(f"**Typical Use:** {mosfet.typical_use}")
-                        with col2:
-                            st.info(mosfet.efficiency_range)
-                        st.caption(f"💡 **Why:** {suggestion.reason}")
-                        
-                        # Show applied heuristics if available
-                        if hasattr(suggestion, 'heuristics_applied') and suggestion.heuristics_applied:
-                            st.markdown("**📋 Applied Design Heuristics:**")
-                            for heuristic in suggestion.heuristics_applied[:3]:  # Show top 3
-                                st.markdown(f"- {heuristic}")
-            else:
-                st.warning("No suitable MOSFETs found for these specifications")
+            # Filter MOSFETs based on search mode
+            filtered_mosfets = filter_suggestions_by_source(mosfet_suggestions, use_web_search) if use_web_search else mosfet_suggestions
+            display_component_table(filtered_mosfets, 'mosfet', '💻 MOSFETs')
         
         with tab2:
-            if input_cap_suggestions:
-                st.info(f"🔍 **Input Capacitor Analysis:** Required: {results.input_capacitance * 1e6:.1f}µF, "
-                       f"Max voltage: {inputs.v_in_max}V, Ripple current: {input_ripple_current:.2f}A")
-                
-                for idx, suggestion in enumerate(input_cap_suggestions):
-                    cap = suggestion.component
-                    with st.expander(f"#{idx+1} {cap.part_number} - {cap.manufacturer}", expanded=idx==0):
-                        col1, col2 = st.columns([2, 1])
-                        with col1:
-                            st.markdown(f"**Capacitance:** {cap.capacitance}µF | **Voltage:** {cap.voltage}V")
-                            st.markdown(f"**Category:** {cap.category} | **Dielectric:** {cap.dielectric}")
-                            st.markdown(f"**ESR:** {cap.esr}mΩ | **ESL:** {cap.esl}nH")
-                            if cap.ripple_rating > 0:
-                                st.markdown(f"**Ripple Rating:** {cap.ripple_rating}A")
-                            st.markdown(f"**Package:** {cap.package}")
-                        with col2:
-                            st.success(cap.availability.title())
-                            if cap.cost > 0:
-                                st.info(f"${cap.cost:.2f}")
-                        
-                        st.caption(f"💡 **Why:** {suggestion.reason}")
-                        
-                        # Show applied heuristics
-                        if hasattr(suggestion, 'heuristics_applied') and suggestion.heuristics_applied:
-                            st.markdown("**🎯 Applied Design Heuristics:**")
-                            for heuristic in suggestion.heuristics_applied[:4]:  # Show top 4
-                                st.markdown(f"- {heuristic}")
-                        
-                        # Show notes if available
-                        if cap.notes and cap.notes != 'nan':
-                            st.markdown(f"**📝 Notes:** {cap.notes}")
-            else:
-                st.warning("No suitable input capacitors found for these specifications")
+            # Show analysis info
+            st.info(f"🔍 **Input Capacitor Analysis:** Required: {results.input_capacitance * 1e6:.1f}µF, "
+                   f"Max voltage: {inputs.v_in_max}V, Ripple current: {input_ripple_current:.2f}A")
+            
+            # Filter and display input capacitors
+            filtered_input_caps = filter_suggestions_by_source(input_cap_suggestions, use_web_search) if use_web_search else input_cap_suggestions
+            display_component_table(filtered_input_caps, 'input_capacitor', '📥 Input Capacitors')
         
         with tab3:
-            if output_cap_suggestions:
-                for idx, suggestion in enumerate(output_cap_suggestions):
-                    cap = suggestion.component
-                    with st.expander(f"#{idx+1} {cap.part_number} - {cap.manufacturer}", expanded=idx==0):
-                        st.markdown(f"**Capacitance:** {cap.capacitance}µF | **Voltage:** {cap.voltage}V | **Type:** {cap.type}")
-                        st.markdown(f"**ESR:** {cap.esr}mΩ | **Temp Range:** {cap.temp_range}°C")
-                        st.markdown(f"**Primary Use:** {cap.primary_use}")
-                        st.caption(f"💡 **Why:** {suggestion.reason}")
-            else:
-                st.warning("No suitable output capacitors found for these specifications")
+            # Filter and display output capacitors
+            filtered_output_caps = filter_suggestions_by_source(output_cap_suggestions, use_web_search) if use_web_search else output_cap_suggestions
+            display_component_table(filtered_output_caps, 'capacitor', '📤 Output Capacitors')
         
         with tab4:
-            if inductor_suggestions:
-                for idx, suggestion in enumerate(inductor_suggestions):
-                    ind = suggestion.component
-                    with st.expander(f"#{idx+1} {ind.part_number} - {ind.manufacturer}", expanded=idx==0):
-                        st.markdown(f"**Inductance:** {ind.inductance}µH | **Current:** {ind.current}A")
-                        st.markdown(f"**DCR:** {ind.dcr}mΩ | **Isat:** {ind.sat_current}A | **Package:** {ind.package}")
-                        st.caption(f"💡 **Why:** {suggestion.reason}")
-                        
-                        # Show applied heuristics if available
-                        if hasattr(suggestion, 'heuristics_applied') and suggestion.heuristics_applied:
-                            st.markdown("**📋 Applied Design Heuristics:**")
-                            for heuristic in suggestion.heuristics_applied[:3]:  # Show top 3
-                                st.markdown(f"- {heuristic}")
-            else:
-                st.warning("No suitable inductors found for these specifications")
+            # Filter and display inductors
+            filtered_inductors = filter_suggestions_by_source(inductor_suggestions, use_web_search) if use_web_search else inductor_suggestions
+            display_component_table(filtered_inductors, 'inductor', '🧲 Inductors')
 
         # 🔬 SIMULATION SECTION
         # Add simulation functionality after component recommendations

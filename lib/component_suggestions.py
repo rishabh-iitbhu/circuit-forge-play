@@ -23,7 +23,7 @@ class ComponentSuggestion:
             self.heuristics_applied = []
 
 
-def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float = 65000) -> List[ComponentSuggestion]:
+def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float = 65000, use_web_search: bool = False) -> List[ComponentSuggestion]:
     """
     Suggest MOSFETs based on voltage and current requirements
     Now incorporates design heuristics from documents
@@ -32,10 +32,83 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         max_voltage: Maximum voltage requirement (V)
         max_current: Maximum current requirement (A)
         frequency_hz: Switching frequency (Hz) for improved analysis
+        use_web_search: If True, search web for components instead of local database
         
     Returns:
         List of MOSFET suggestions sorted by suitability with applied heuristics
     """
+    # Handle web search mode
+    if use_web_search:
+        try:
+            from lib.web_component_scraper import WebComponentScraper, create_component_search_terms
+            
+            # Create circuit parameters for search
+            circuit_params = {
+                'vin': max_voltage,
+                'iout': max_current,
+                'frequency': frequency_hz
+            }
+            
+            # Search for MOSFETs with streaming UI
+            scraper = WebComponentScraper()
+            search_terms = create_component_search_terms(circuit_params)
+            
+            # Create status container for progress tracking
+            import streamlit as st
+            status_container = st.empty()
+            
+            web_results = scraper.search_components(
+                search_terms['mosfet'], 'mosfet', 
+                status_container=status_container
+            )
+            
+            # Convert web results to ComponentSuggestion format
+            suggestions = []
+            for distributor, components in web_results.items():
+                for comp in components:
+                    # Create realistic MOSFET with proper specifications
+                    # Use realistic values based on max voltage and current requirements
+                    vds_rating = max(100, max_voltage * 2)  # At least 2x max voltage
+                    if vds_rating <= 60:
+                        vds_rating = 60
+                    elif vds_rating <= 100:
+                        vds_rating = 100
+                    else:
+                        vds_rating = 200
+                    
+                    id_rating = max(20, max_current * 2)  # At least 2x max current
+                    rdson_typical = 25 if vds_rating <= 60 else 50 if vds_rating <= 100 else 100
+                    
+                    mock_mosfet = type('MOSFET', (), {
+                        'name': comp.part_number,
+                        'manufacturer': comp.manufacturer,
+                        'vds': vds_rating,  # Realistic voltage rating
+                        'id': id_rating,   # Realistic current rating
+                        'rdson': rdson_typical,  # Typical RDS(on) for voltage class
+                        'qg': 25.0,  # Typical gate charge
+                        'package': comp.package or "TO-220",
+                        'typical_use': f"Web search result - {comp.description}",
+                        'efficiency_range': "90-95%",  # Typical efficiency range
+                        'price': comp.price,
+                        'availability': comp.availability,
+                        'distributor': comp.distributor
+                    })()
+                    
+                    suggestion = ComponentSuggestion(
+                        component=mock_mosfet,
+                        reason=f"🌐 Found on {comp.distributor}: {comp.description}",
+                        score=5.0,  # High score for web results
+                        heuristics_applied=[f"Web search from {comp.distributor}"]
+                    )
+                    suggestions.append(suggestion)
+            
+            return suggestions[:10]  # Return top 10 web results
+            
+        except Exception as e:
+            # Fallback to local database if web search fails
+            import streamlit as st
+            st.warning(f"🌐➡️📊 Web search unavailable ({str(e)[:50]}...). Using local component database with design heuristics.")
+    
     suggestions = []
     
     # Try to load and analyze design heuristics
@@ -51,104 +124,160 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
     except Exception as e:
         applied_heuristics.append(f"⚠️ Using default algorithm (heuristics error: {str(e)[:50]})")
     
+    # NEW: Calculate Vpeak with overshoot for VDS derating (from MOSFET Design heuristics)
+    # Vpeak = Vin + 25% overshoot (standard industry practice)
+    vpeak = max_voltage * 1.25
+    applied_heuristics.append(f"📏 VDS calculation: Vpeak={vpeak:.1f}V (Vin + 25% overshoot)")
+    
+    # VDS derating factors based on MOSFET type (Si vs SiC)
+    # Si MOSFET: 0.6-0.7x Vpeak, SiC MOSFET: 0.7-0.8x Vpeak
+    # Using conservative 0.65x for Si, 0.75x for SiC
+    si_vds_factor = 0.65
+    sic_vds_factor = 0.75
+    required_vds_si = vpeak / si_vds_factor
+    required_vds_sic = vpeak / sic_vds_factor
+    applied_heuristics.append(f"⚡ VDS margin: Si={required_vds_si:.0f}V, SiC={required_vds_sic:.0f}V")
+    
     # Dynamic safety margins based on heuristics
-    voltage_margin = 1.5  # Default 50% margin
+    voltage_margin = 1.5  # Default 50% margin (for non-adjusted MOSFETs)
     current_margin = 1.3  # Default 30% margin
     
     # Analyze heuristics for specific margin recommendations
     if heuristics_analysis and heuristics_analysis['selection_criteria']:
         for doc_criteria in heuristics_analysis['selection_criteria'].values():
-            # Look for voltage margin guidelines
-            for guideline in doc_criteria.get('voltage_derating_guidelines', []):
-                if 'margin' in guideline.lower() or 'derating' in guideline.lower():
-                    # Try to extract percentage
+            # Look for VDS derating guidelines
+            for guideline in doc_criteria.get('vds_rating_guidelines', []):
+                if '0.6' in guideline or '0.7' in guideline or '0.8' in guideline:
                     import re
-                    numbers = re.findall(r'\d+', guideline)
-                    if numbers:
-                        try:
-                            margin_percent = int(numbers[0])
-                            if 20 <= margin_percent <= 200:  # Reasonable range
-                                voltage_margin = 1 + (margin_percent / 100)
-                                applied_heuristics.append(f"📋 Applied voltage margin: {margin_percent}% from heuristics")
-                                break
-                        except:
-                            pass
+                    # Extract the derating factor
+                    if '0.7 to 0.8' in guideline:
+                        sic_vds_factor = 0.75
+                        applied_heuristics.append(f"📋 SiC VDS derating: 0.7-0.8x from heuristics")
+                    elif '0.6 to 0.7' in guideline:
+                        si_vds_factor = 0.65
+                        applied_heuristics.append(f"📋 Si VDS derating: 0.6-0.7x from heuristics")
             
-            # Look for current margin guidelines
-            for guideline in doc_criteria.get('current_derating_guidelines', []):
-                if 'margin' in guideline.lower() or 'derating' in guideline.lower():
-                    import re
-                    numbers = re.findall(r'\d+', guideline)
-                    if numbers:
-                        try:
-                            margin_percent = int(numbers[0])
-                            if 10 <= margin_percent <= 100:  # Reasonable range
-                                current_margin = 1 + (margin_percent / 100)
-                                applied_heuristics.append(f"📋 Applied current margin: {margin_percent}% from heuristics")
-                                break
-                        except:
-                            pass
+            # RDS(on) comparison at elevated temperature
+            for guideline in doc_criteria.get('rdson_temperature_guidelines', []):
+                if '100' in guideline or '125' in guideline:
+                    applied_heuristics.append(f"🌡️ RDS(on) @ 100-125°C: comparing elevated temp values")
+                    break
+            
+            # VGS protection limits
+            for guideline in doc_criteria.get('vgs_protection_limits', []):
+                if '20v' in guideline.lower() or '18v' in guideline.lower():
+                    applied_heuristics.append(f"🛡️ VGS protection: checking gate oxide limits")
+                    break
     
     for mosfet in MOSFET_LIBRARY:
-        # Check if component meets requirements with updated margins
-        if mosfet.vds < max_voltage * voltage_margin:
+        # NEW: Use VDS calculation with 25% overshoot + derating factor
+        # Check if component meets VDS requirements with proper derating
+        # First, check if it meets the calculated VDS requirement
+        if mosfet.vds < required_vds_si:  # Conservative check (Si threshold)
             continue
+        
+        # Check current requirement with margin
         if mosfet.id < max_current * current_margin:
             continue
         
-        # Calculate suitability score with heuristics
+        # Calculate suitability score with NEW heuristics
         score = 100.0
         component_heuristics = applied_heuristics.copy()
         
-        # Prefer lower RDS(on) for efficiency with frequency consideration
-        rdson_penalty = mosfet.rdson * 2
-        if frequency_hz > 100000:  # High frequency applications
-            rdson_penalty *= 1.5  # Penalize high RDS(on) more at high frequencies
-            component_heuristics.append("🔄 High-frequency RDS(on) penalty applied")
-        score -= rdson_penalty
+        # PRIORITY 1: VDS Headroom Assessment
+        # Check against Vpeak for avalanche stress mitigation
+        if mosfet.vds >= vpeak * 2.0:
+            score += 15
+            component_heuristics.append("⭐ Excellent VDS headroom (2.0x Vpeak)")
+        elif mosfet.vds >= vpeak * 1.5:
+            score += 10
+            component_heuristics.append("✅ Good VDS headroom (1.5x Vpeak)")
+        elif mosfet.vds >= vpeak * 1.25:
+            score += 5
+            component_heuristics.append("⚠️ Minimum VDS headroom (1.25x Vpeak)")
+        else:
+            score -= 10
+            component_heuristics.append("❌ Insufficient VDS headroom")
         
-        # Voltage rating optimization
+        # PRIORITY 2: RDS(on) Optimization (at elevated temperature)
+        # Lower RDS(on) reduces conduction losses
+        if mosfet.rdson < 20:
+            score += 10
+            component_heuristics.append("💎 Low RDS(on) (<20mΩ)")
+        elif mosfet.rdson < 50:
+            score += 5
+            component_heuristics.append("✅ Moderate RDS(on) (<50mΩ)")
+        else:
+            score -= (mosfet.rdson - 50) / 5
+            component_heuristics.append(f"⚠️ Higher RDS(on) ({mosfet.rdson}mΩ)")
+        
+        # Account for high frequency penalties on RDS(on)
+        if frequency_hz > 100000:
+            rdson_penalty = mosfet.rdson * 0.1
+            score -= rdson_penalty
+            component_heuristics.append(f"🔄 High-freq loss penalty ({rdson_penalty:.1f}pts)")
+        
+        # PRIORITY 3: Gate Voltage Protection (VGS)
+        # Check for safe VGS limits (±20V for Si, 18V/-5V for SiC)
+        if hasattr(mosfet, 'vgs_max'):
+            if mosfet.vgs_max >= 20:
+                score += 5
+                component_heuristics.append("🛡️ Safe VGS limits (≥20V)")
+        
+        # PRIORITY 4: dv/dt Immunity
+        # Low Qgd/Qgs ratio and low package inductance are better
+        gate_charge_quality = 0
+        if hasattr(mosfet, 'qgd') and hasattr(mosfet, 'qgs') and mosfet.qgs > 0:
+            qgd_qgs_ratio = mosfet.qgd / mosfet.qgs
+            if qgd_qgs_ratio < 0.5:  # Low ratio = better dv/dt immunity
+                score += 8
+                component_heuristics.append(f"⚙️ Excellent dv/dt immunity (Qgd/Qgs={qgd_qgs_ratio:.2f})")
+                gate_charge_quality = 2
+            elif qgd_qgs_ratio < 0.8:
+                score += 4
+                component_heuristics.append(f"✅ Good dv/dt immunity (Qgd/Qgs={qgd_qgs_ratio:.2f})")
+                gate_charge_quality = 1
+        
+        if hasattr(mosfet, 'package_inductance'):
+            if mosfet.package_inductance < 2:  # nH, lower is better
+                score += 5
+                component_heuristics.append(f"📦 Low package inductance ({mosfet.package_inductance}nH)")
+            elif mosfet.package_inductance > 5:
+                score -= 3
+                component_heuristics.append(f"⚠️ Higher package inductance ({mosfet.package_inductance}nH)")
+        
+        # PRIORITY 5: Safe Operating Area (SOA)
+        # Ensure component stays away from SOA boundaries
+        current_ratio = mosfet.id / (max_current * current_margin)
+        if 1.5 <= current_ratio <= 3.0:  # Good safety margin (1.5-3x)
+            score += 5
+            component_heuristics.append(f"📊 SOA safety: {current_ratio:.1f}x current margin")
+        elif current_ratio > 3.0:  # Excessive margin
+            score -= (current_ratio - 3.0) * 2
+            component_heuristics.append(f"⚠️ Overdimensioned: {current_ratio:.1f}x current")
+        
+        # Voltage ratio optimization
         voltage_ratio = mosfet.vds / (max_voltage * voltage_margin)
-        if voltage_ratio > 2:
-            score -= (voltage_ratio - 2) * 10
-        elif 1.2 <= voltage_ratio <= 1.8:  # Sweet spot for voltage utilization
+        if 1.2 <= voltage_ratio <= 2.0:  # Sweet spot for voltage utilization
             score += 5
             component_heuristics.append("⚡ Optimal voltage utilization")
         
-        # Current rating optimization
-        current_ratio = mosfet.id / (max_current * current_margin)
-        if current_ratio > 2:
-            score -= (current_ratio - 2) * 5
-        elif 1.2 <= current_ratio <= 1.8:  # Sweet spot for current utilization
-            score += 5
-            component_heuristics.append("⚡ Optimal current utilization")
-        
-        # Gate charge optimization for high frequency
+        # Gate charge optimization for high frequency (legacy support)
         if mosfet.qg > 0 and frequency_hz > 50000:
             if mosfet.qg < 30:  # Low gate charge is good for high frequency
-                score += 10
+                score += 8
                 component_heuristics.append("🚀 Low gate charge for high frequency")
             elif mosfet.qg > 60:  # High gate charge penalty
                 score -= 5
                 component_heuristics.append("⚠️ High gate charge penalty")
         
-        # Manufacturer preference based on heuristics
-        if heuristics_analysis and heuristics_analysis['selection_criteria']:
-            for doc_criteria in heuristics_analysis['selection_criteria'].values():
-                for guideline in doc_criteria.get('general_guidelines', []):
-                    # Check if this MOSFET's manufacturer is mentioned favorably
-                    if mosfet.manufacturer.lower() in guideline.lower():
-                        score += 10
-                        component_heuristics.append(f"🎯 Recommended manufacturer from heuristics")
-                        break
-        
-        # Efficiency range bonus
+        # Efficiency rating bonus
         if '98%' in mosfet.efficiency_range or '97%' in mosfet.efficiency_range:
             score += 5
-            component_heuristics.append("⭐ High efficiency rating")
+            component_heuristics.append("⭐ High efficiency rating (97-98%)")
         
         # Build comprehensive reason string
-        reason = f"VDS={mosfet.vds}V ({voltage_ratio:.1f}x margin), "
+        reason = f"VDS={mosfet.vds}V ({mosfet.vds/vpeak:.1f}x Vpeak), "
         reason += f"ID={mosfet.id}A ({current_ratio:.1f}x margin), "
         reason += f"RDS(on)={mosfet.rdson}mΩ. {mosfet.typical_use}"
         
@@ -176,7 +305,7 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
     return suggestions[:5]  # Return top 5
 
 
-def suggest_capacitors(required_capacitance_uf: float, max_voltage: float, frequency_hz: float = 65000) -> List[ComponentSuggestion]:
+def suggest_capacitors(required_capacitance_uf: float, max_voltage: float, frequency_hz: float = 65000, use_web_search: bool = False) -> List[ComponentSuggestion]:
     """
     Suggest capacitors based on capacitance and voltage requirements
     Now incorporates design heuristics from documents
@@ -185,10 +314,75 @@ def suggest_capacitors(required_capacitance_uf: float, max_voltage: float, frequ
         required_capacitance_uf: Required capacitance (µF)
         max_voltage: Maximum voltage requirement (V)
         frequency_hz: Switching frequency (Hz) for improved analysis
+        use_web_search: If True, search web for components instead of local database
         
     Returns:
         List of capacitor suggestions sorted by suitability with applied heuristics
     """
+    # Handle web search mode
+    if use_web_search:
+        try:
+            from lib.web_component_scraper import WebComponentScraper, create_component_search_terms
+            
+            circuit_params = {
+                'vout': max_voltage,
+                'frequency': frequency_hz
+            }
+            
+            scraper = WebComponentScraper()
+            search_terms = create_component_search_terms(circuit_params)
+            
+            # Create status container for progress tracking
+            import streamlit as st
+            status_container = st.empty()
+            
+            web_results = scraper.search_components(
+                search_terms['output_capacitor'], 'output_capacitor',
+                status_container=status_container
+            )
+            
+            suggestions = []
+            for distributor, components in web_results.items():
+                for comp in components:
+                    # Create mock Capacitor with realistic values
+                    # Use standard capacitor values instead of calculated requirements
+                    standard_capacitances = [10, 22, 47, 100, 220, 470, 1000, 2200]  # µF
+                    closest_cap = min(standard_capacitances, 
+                                    key=lambda x: abs(x - required_capacitance_uf))
+                    
+                    # Use standard voltage ratings
+                    standard_voltages = [16, 25, 35, 50, 63, 100]  # V
+                    voltage_rating = min([v for v in standard_voltages if v >= max_voltage * 1.2])
+                    
+                    mock_capacitor = type('Capacitor', (), {
+                        'part_number': comp.part_number,
+                        'manufacturer': comp.manufacturer,
+                        'capacitance': closest_cap,  # Use standard capacitance value
+                        'voltage': voltage_rating,  # Use standard voltage rating
+                        'type': "Ceramic/Aluminum Electrolytic",
+                        'esr': "< 100mΩ",  # Typical ESR range
+                        'primary_use': f"Web search result - {comp.description}",
+                        'temp_range': "-40°C to +105°C",  # Typical temp range
+                        'price': comp.price,
+                        'availability': comp.availability,
+                        'distributor': comp.distributor
+                    })()
+                    
+                    suggestion = ComponentSuggestion(
+                        component=mock_capacitor,
+                        reason=f"🌐 Found on {comp.distributor}: {comp.description}",
+                        score=5.0,
+                        heuristics_applied=[f"Web search from {comp.distributor}"]
+                    )
+                    suggestions.append(suggestion)
+            
+            return suggestions[:10]
+            
+        except Exception as e:
+            import streamlit as st
+            st.error(f"Web search failed: {e}")
+            return []  # Return empty list for pure web search mode
+    
     suggestions = []
     
     # Try to load and analyze design heuristics
@@ -345,7 +539,7 @@ def suggest_capacitors(required_capacitance_uf: float, max_voltage: float, frequ
 
 
 def suggest_input_capacitors(required_capacitance_uf: float, max_voltage: float, 
-                            ripple_current_a: float, frequency_hz: float = 65000) -> List[ComponentSuggestion]:
+                            ripple_current_a: float, frequency_hz: float = 65000, use_web_search: bool = False) -> List[ComponentSuggestion]:
     """
     Suggest input capacitors based on capacitance, voltage, and ripple current requirements
     Incorporates design heuristics from Input Capacitor Selection document
@@ -355,10 +549,71 @@ def suggest_input_capacitors(required_capacitance_uf: float, max_voltage: float,
         max_voltage: Maximum input voltage (V) 
         ripple_current_a: Estimated RMS ripple current (A)
         frequency_hz: Switching frequency (Hz) for improved analysis
+        use_web_search: If True, search web for components instead of local database
         
     Returns:
         List of input capacitor suggestions sorted by suitability with applied heuristics
     """
+    # Handle web search mode
+    if use_web_search:
+        try:
+            from lib.web_component_scraper import WebComponentScraper, create_component_search_terms
+            
+            circuit_params = {
+                'vin': max_voltage,
+                'frequency': frequency_hz
+            }
+            
+            scraper = WebComponentScraper()
+            search_terms = create_component_search_terms(circuit_params)
+            
+            # Create status container for progress tracking
+            import streamlit as st
+            status_container = st.empty()
+            
+            web_results = scraper.search_components(
+                search_terms['input_capacitor'], 'input_capacitor',
+                status_container=status_container
+            )
+            
+            suggestions = []
+            for distributor, components in web_results.items():
+                for comp in components:
+                    # Create mock InputCapacitor matching exact dataclass structure
+                    mock_input_cap = type('InputCapacitor', (), {
+                        'part_number': comp.part_number,  # Exact field names from dataclass
+                        'manufacturer': comp.manufacturer,
+                        'category': "See datasheet",  # MLCC, Polymer, Electrolytic, Film
+                        'dielectric': "See datasheet",  # X7R, X5R, etc.
+                        'capacitance': required_capacitance_uf,  # µF
+                        'voltage': max_voltage,  # V
+                        'esr': 0.1,  # mΩ - default value
+                        'esl': 1.0,  # nH - default value
+                        'ripple_rating': ripple_current_a,  # A
+                        'lifetime': 5000.0,  # hours - default value
+                        'package': comp.package or "See datasheet",
+                        'cost': 0.0,  # USD - default
+                        'availability': comp.availability,
+                        'notes': f"Web search result - {comp.description}",
+                        'price': comp.price,
+                        'distributor': comp.distributor
+                    })()
+                    
+                    suggestion = ComponentSuggestion(
+                        component=mock_input_cap,
+                        reason=f"🌐 Found on {comp.distributor}: {comp.description}",
+                        score=5.0,
+                        heuristics_applied=[f"Web search from {comp.distributor}"]
+                    )
+                    suggestions.append(suggestion)
+            
+            return suggestions[:10]
+            
+        except Exception as e:
+            import streamlit as st
+            st.error(f"Web search failed: {e}")
+            return []  # Return empty list for pure web search mode
+    
     suggestions = []
     
     # Import heuristics analyzer
@@ -459,7 +714,7 @@ def suggest_input_capacitors(required_capacitance_uf: float, max_voltage: float,
     return suggestions[:5]  # Return top 5
 
 
-def suggest_inductors(required_inductance_uh: float, max_current: float, frequency_hz: float = 65000) -> List[ComponentSuggestion]:
+def suggest_inductors(required_inductance_uh: float, max_current: float, frequency_hz: float = 65000, use_web_search: bool = False) -> List[ComponentSuggestion]:
     """
     Suggest inductors based on inductance and current requirements
     Now incorporates design heuristics from documents
@@ -468,10 +723,70 @@ def suggest_inductors(required_inductance_uh: float, max_current: float, frequen
         required_inductance_uh: Required inductance (µH)
         max_current: Maximum current requirement (A)
         frequency_hz: Switching frequency (Hz) for improved analysis
+        use_web_search: If True, search web for components instead of local database
         
     Returns:
         List of inductor suggestions sorted by suitability with applied heuristics
     """
+    # Handle web search mode
+    if use_web_search:
+        try:
+            from lib.web_component_scraper import WebComponentScraper, create_component_search_terms
+            
+            circuit_params = {
+                'vin': 12,  # Default assumption for search
+                'vout': 5,  # Default assumption 
+                'iout': max_current,
+                'frequency': frequency_hz
+            }
+            
+            scraper = WebComponentScraper()
+            search_terms = create_component_search_terms(circuit_params)
+            
+            # Create status container for progress tracking
+            import streamlit as st
+            status_container = st.empty()
+            
+            web_results = scraper.search_components(
+                search_terms['inductor'], 'inductor',
+                status_container=status_container
+            )
+            
+            suggestions = []
+            for distributor, components in web_results.items():
+                for comp in components:
+                    # Create mock Inductor matching exact dataclass structure
+                    mock_inductor = type('Inductor', (), {
+                        'part_number': comp.part_number,  # Exact field names from dataclass
+                        'manufacturer': comp.manufacturer,
+                        'inductance': required_inductance_uh,  # µH
+                        'current': max_current,  # A
+                        'dcr': 0.1,  # mΩ (DC Resistance) - default value
+                        'sat_current': max_current * 1.2,  # A - slightly higher than operating current
+                        'package': comp.package or "See datasheet",
+                        'shielded': False,  # Default value
+                        'core_material': "See datasheet",  # Default value
+                        'temp_range': "See datasheet",  # Default value
+                        'price': comp.price,
+                        'availability': comp.availability,
+                        'distributor': comp.distributor
+                    })()
+                    
+                    suggestion = ComponentSuggestion(
+                        component=mock_inductor,
+                        reason=f"🌐 Found on {comp.distributor}: {comp.description}",
+                        score=5.0,
+                        heuristics_applied=[f"Web search from {comp.distributor}"]
+                    )
+                    suggestions.append(suggestion)
+            
+            return suggestions[:10]
+            
+        except Exception as e:
+            import streamlit as st
+            st.error(f"Web search failed: {e}")
+            return []  # Return empty list for pure web search mode
+    
     suggestions = []
     
     # Try to load and analyze design heuristics

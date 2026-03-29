@@ -14,11 +14,45 @@ A sophisticated **Streamlit-based** web application for power electronics circui
 
 
 
-## 🚀 Live Demo## Installation
+## 🚀 Live Demo & Deployment
 
+**Visit the live app**: [circuit-forge-play-app31.streamlit.app](https://circuit-forge-play-app31.streamlit.app/)
 
+### 🔄 Automatic Deployment Process
 
-**Visit the live app**: [circuit-forge-play.streamlit.app](https://circuit-forge-play-dhyftvfmelcyhbpuwiuf75.streamlit.app/)### Prerequisites
+This app uses **GitHub Actions** for automatic deployment to Streamlit Cloud:
+
+#### Deployment Triggers:
+- **Push to `main`**: Production deployment
+- **Push to `feature/web-component-search`**: Feature testing deployment
+- **PR merge to `main`**: Automatic deployment after validation
+
+#### How to Deploy:
+```bash
+# Option 1: Use the deployment script
+python deploy.py "Your commit message"
+
+# Option 2: Manual git commands
+git add .
+git commit -m "Your changes"
+git push origin HEAD
+```
+
+#### What Happens Automatically:
+1. **GitHub Actions** validates code and runs tests
+2. **Streamlit Cloud** detects changes and redeploys
+3. **Live app** updates within 2-5 minutes
+4. **Deployment status** visible in GitHub Actions and Streamlit Cloud
+
+#### Required Secrets (Streamlit Cloud):
+Configure these in your Streamlit Cloud app settings:
+- `OPENAI_API_KEY`: For LLM assistant functionality
+- Other API keys as needed (see `.streamlit/secrets.example.toml`)
+
+#### Files Involved:
+- `.github/workflows/deploy-streamlit.yml`: GitHub Actions workflow
+- `deploy.py`: Local deployment script
+- `.streamlit/secrets.example.toml`: Secrets template
 
 
 
