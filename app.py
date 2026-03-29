@@ -30,7 +30,11 @@ To trigger deployment:
 Last deployment: 2026-03-29 11:25:08 (deployment automation setup)
 """
 
-import streamlit as st
+import os, subprocess, streamlit as st
+try:
+    st.write("Git commit:", subprocess.check_output(["git","rev-parse","HEAD"]).decode().strip())
+except Exception as e:
+    st.write("Could not read git commit:", e)
 
 from lib.llm_assistant import LLMAgent
 
