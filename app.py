@@ -31,10 +31,48 @@ Last deployment: 2026-03-29 11:25:08 (deployment automation setup)
 """
 
 import os, subprocess, streamlit as st
-try:
-    st.write("Git commit:", subprocess.check_output(["git","rev-parse","HEAD"]).decode().strip())
-except Exception as e:
-    st.write("Could not read git commit:", e)
+
+# Try to read the current git commit. First attempt using the `git` CLI,
+# then fall back to reading the .git/HEAD file if the executable is not
+# available (common on some Windows systems or in lightweight runtime
+# environments). Display a concise, user-friendly message on failure.
+def _read_git_head_from_dotgit(repo_root: str) -> str | None:
+    head_path = os.path.join(repo_root, '.git', 'HEAD')
+    try:
+        if os.path.exists(head_path):
+            with open(head_path, 'r', encoding='utf-8') as fh:
+                content = fh.read().strip()
+            # HEAD may contain a ref like: "ref: refs/heads/main"
+            if content.startswith('ref:'):
+                ref_path = content.split('ref:')[1].strip()
+                ref_file = os.path.join(repo_root, '.git', *ref_path.split('/'))
+                if os.path.exists(ref_file):
+                    with open(ref_file, 'r', encoding='utf-8') as rf:
+                        return rf.read().strip()
+            else:
+                # HEAD already contains a commit hash
+                return content
+    except Exception:
+        return None
+
+def get_git_commit() -> str | None:
+    repo_root = os.path.dirname(os.path.abspath(__file__))
+    try:
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()
+        return commit
+    except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+        # Fall back to reading .git/HEAD
+        try:
+            return _read_git_head_from_dotgit(repo_root)
+        except Exception:
+            return None
+
+
+git_commit = get_git_commit()
+if git_commit:
+    st.write("Git commit:", git_commit)
+else:
+    st.write("Could not read git commit: 'git' not available and no .git/HEAD found")
 
 from lib.llm_assistant import LLMAgent
 
