@@ -1,0 +1,116 @@
+name: Verify Streamlit Deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  verify-deploy:
+    runs-on: ubuntu-latest
+    env:
+      APP_URL: https://circuit-forge-play-app31.streamlit.app/
+      RETRIES: 30
+      SLEEP_SECONDS: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Wait for app to become available
+        id: wait_for_app
+        run: |
+          set -e
+          attempts=0
+          while [ $attempts -lt $RETRIES ]; do
+            http_code=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL") || true
+            echo "Attempt $attempts: HTTP $http_code"
+            if [ "$http_code" = "200" ]; then
+              echo "app_available=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            attempts=$((attempts+1))
+            sleep $SLEEP_SECONDS
+          done
+          echo "app_available=false" >> $GITHUB_OUTPUT
+
+      - name: Create or update Deployment Status issue
+        id: create_issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const appUrl = process.env.APP_URL
+            const sha = process.env.GITHUB_SHA
+            const available = '${{ steps.wait_for_app.outputs.app_available }}' === 'true'
+            const title = 'Streamlit deployment status (automated)'
+            const body = available ?
+              `✅ Deployment successful for commit ${sha}\n\nApp URL: ${appUrl}` :
+              `❌ Deployment failed to respond for commit ${sha} within timeout.\n\nApp URL: ${appUrl}`
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open'
+            })
+
+            let existing = issues.find(i => i.title === title)
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: body
+              })
+              return { issue_number: existing.number }
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['deployment']
+              })
+              return { issue_number: created.data.number }
+            }
+
+      - name: Notify Slack (if configured)
+        if: always()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          set -e
+          AVAILABLE='${{ steps.wait_for_app.outputs.app_available }}'
+          SHA=${GITHUB_SHA}
+          APP_URL=${APP_URL}
+          if [ -z "$SLACK_WEBHOOK" ]; then
+            echo "No SLACK_WEBHOOK_URL secret set, skipping Slack notification"
+            exit 0
+          fi
+          if [ "$AVAILABLE" = "true" ]; then
+            MSG="✅ Streamlit deployed successfully for ${SHA} — ${APP_URL}"
+          else
+            MSG="❌ Streamlit did not become available for ${SHA} — ${APP_URL}"
+          fi
+          payload=$(jq -n --arg text "$MSG" '{text:$text}') || payload="{\"text\": \"$MSG\"}"
+          curl -s -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK"
+
+      - name: Send Email Notifications (if SMTP configured)
+        if: ${{ secrets.SMTP_HOST != '' && secrets.SMTP_USERNAME != '' && secrets.SMTP_PASSWORD != '' && secrets.EMAIL_RECIPIENTS != '' }}
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_HOST }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "[Streamlit Deploy] ${{ steps.wait_for_app.outputs.app_available == 'true' && 'SUCCESS' || 'FAIL' }} — ${{ github.sha }}"
+          to: ${{ secrets.EMAIL_RECIPIENTS }}
+          from: ${{ secrets.SMTP_FROM || secrets.SMTP_USERNAME }}
+          body: |
+            Deployment ${APP_URL}
+            Commit: ${{ github.sha }}
+            Available: ${{ steps.wait_for_app.outputs.app_available }}
+
+      - name: Fail job when deploy unavailable
+        if: ${{ steps.wait_for_app.outputs.app_available != 'true' }}
+        run: |
+          echo "Streamlit app did not become available within timeout." >&2
+          exit 1
