@@ -1,3 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+venv/
+env/
+.env
+
+# Node
+node_modules/
+
+# VSCode
+.vscode/
+
+# Streamlit
+.streamlit/
+
+# Office temp files
+~$*
+
+# OS files
+.DS_Store
+Thumbs.db
 # Logs
 logs
 *.log
