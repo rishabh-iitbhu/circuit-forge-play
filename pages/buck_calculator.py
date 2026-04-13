@@ -5,6 +5,7 @@ Buck Converter Calculator Page
 import streamlit as st
 from lib.calculations import CircuitCalculator, BuckInputs, validate_inputs
 from lib.component_suggestions import suggest_mosfets, suggest_capacitors, suggest_inductors, suggest_input_capacitors
+from lib.component_data import reload_component_data, INDUCTOR_LIBRARY
 import os
 
 def get_component_ranges():
@@ -79,6 +80,13 @@ def check_component_availability(mosfet_suggestions, input_cap_suggestions, outp
 def show():
     """Display Buck converter calculator page"""
     
+    # Always reload component database on page load to ensure ranges are sourced
+    try:
+        reload_component_data()
+    except Exception:
+        # Non-fatal: proceed with whatever data is loaded
+        pass
+
     st.header("🔋 Buck Converter Designer")
     
     st.markdown("---")
@@ -106,30 +114,30 @@ def show():
                                    value=float(auto_fix.get('buck_v_out_min', 11.4)), min_value=0.1, step=0.1, key="buck_v_out_min")
         v_out_max = st.number_input(f"Max Output Voltage (V) [Range: {ranges['output_voltage'][0]}-{ranges['output_voltage'][1]}V]", 
                                    value=float(auto_fix.get('buck_v_out_max', 12.6)), min_value=0.1, step=0.1, key="buck_v_out_max")
-        v_ripple_max = st.number_input("Output Voltage Ripple (V) [Typical: 0.01-0.2V]", 
-                                      value=float(auto_fix.get('buck_v_ripple_max', 0.1)), min_value=0.001, step=0.01, key="buck_v_ripple_max")
-        v_in_ripple = st.number_input("Input Voltage Ripple (V) [Typical: 0.05-0.5V]", 
-                                     value=float(auto_fix.get('buck_v_in_ripple', 0.3)), min_value=0.001, step=0.01, key="buck_v_in_ripple")
+        v_ripple_max = st.number_input("Output Voltage Ripple (V)", 
+                          value=float(auto_fix.get('buck_v_ripple_max', 0.1)), min_value=0.001, step=0.01, key="buck_v_ripple_max")
+        v_in_ripple = st.number_input("Input Voltage Ripple (V)", 
+                         value=float(auto_fix.get('buck_v_in_ripple', 0.3)), min_value=0.001, step=0.01, key="buck_v_in_ripple")
     
     with col2:
         st.subheader("⚙️ Power & Current")
         p_out_max = st.number_input(f"Max Output Power (W) [Range: {ranges['power'][0]}-{ranges['power'][1]}W]", 
                                    value=float(auto_fix.get('buck_p_out_max', 12.0)), min_value=0.1, step=1.0, key="buck_p_out_max")
-        efficiency = st.number_input("Efficiency (0-1) [Typical: 0.85-0.98]", 
-                                    value=float(auto_fix.get('buck_efficiency', 0.90)), min_value=0.01, max_value=1.0, step=0.01, key="buck_efficiency")
-        i_out_ripple = st.number_input("Inductor Current Ripple (A) [Typical: 0.2-2.0A]", 
-                                      value=float(auto_fix.get('buck_i_out_ripple', 1.0)), min_value=0.01, step=0.1, key="buck_i_out_ripple")
+        efficiency = st.number_input("Efficiency (0-1)", 
+                        value=float(auto_fix.get('buck_efficiency', 0.90)), min_value=0.01, max_value=1.0, step=0.01, key="buck_efficiency")
+        i_out_ripple = st.number_input("Inductor Current Ripple (A)", 
+                          value=float(auto_fix.get('buck_i_out_ripple', 1.0)), min_value=0.01, step=0.1, key="buck_i_out_ripple")
     
     with col3:
         st.subheader("📊 Transient Parameters")
         switching_freq = st.number_input(f"Switching Frequency (Hz) [Range: {ranges['frequency'][0]/1000:.0f}k-{ranges['frequency'][1]/1000:.0f}kHz]", 
-                                        value=float(auto_fix.get('buck_switching_freq', 300000.0)), min_value=1.0, step=10000.0, key="buck_switching_freq", format="%f")
-        v_overshoot = st.number_input("Voltage Overshoot (V) [Typical: 0.05-0.2V]", 
-                                     value=float(auto_fix.get('buck_v_overshoot', 0.1)), min_value=0.001, step=0.01, key="buck_v_overshoot")
-        v_undershoot = st.number_input("Voltage Undershoot (V) [Typical: 0.05-0.2V]", 
-                                      value=float(auto_fix.get('buck_v_undershoot', 0.1)), min_value=0.001, step=0.01, key="buck_v_undershoot")
-        i_loadstep = st.number_input("Load Step (A) [Typical: 0.1-5.0A]", 
-                                    value=float(auto_fix.get('buck_i_loadstep', 1.0)), min_value=0.01, step=0.1, key="buck_i_loadstep")
+                        value=float(auto_fix.get('buck_switching_freq', 300000.0)), min_value=1.0, step=10000.0, key="buck_switching_freq", format="%f")
+        v_overshoot = st.number_input("Voltage Overshoot (V)", 
+                         value=float(auto_fix.get('buck_v_overshoot', 0.1)), min_value=0.001, step=0.01, key="buck_v_overshoot")
+        v_undershoot = st.number_input("Voltage Undershoot (V)", 
+                          value=float(auto_fix.get('buck_v_undershoot', 0.1)), min_value=0.001, step=0.01, key="buck_v_undershoot")
+        i_loadstep = st.number_input("Load Step (A)", 
+                        value=float(auto_fix.get('buck_i_loadstep', 1.0)), min_value=0.01, step=0.1, key="buck_i_loadstep")
     
     # Parameter guidance
     st.info("💡 **Component Availability Tips:**\n"
@@ -315,10 +323,27 @@ def show():
         # Enhanced debug information for inductor selection
         st.info(f"🔍 **Inductor Debug:** Required: {results.inductance * 1e6:.1f}µH, Max current: {max_current:.2f}A, "
                f"Switching freq: {switching_freq/1000:.0f}kHz, Found: {len(inductor_suggestions) if inductor_suggestions else 0} inductor(s)")
-        
-        # Show available inductor ranges from database
-        st.info(f"📊 **Available Inductors:** 220µH-10000µH, Current: 0.48A-4.5A. "
-               f"Your requirements {'✅ match' if (220 <= results.inductance * 1e6 <= 10000 and max_current <= 4.5) else '❌ exceed'} available range.")
+
+        # Compute available ranges from the loaded inductor database
+        try:
+            inductances = [i.inductance for i in INDUCTOR_LIBRARY if hasattr(i, 'inductance') and i.inductance > 0]
+            currents = [i.current for i in INDUCTOR_LIBRARY if hasattr(i, 'current') and i.current > 0]
+            if inductances:
+                L_min = min(inductances)
+                L_max = max(inductances)
+            else:
+                L_min, L_max = 0, 0
+            if currents:
+                I_min = min(currents)
+                I_max = max(currents)
+            else:
+                I_min, I_max = 0, 0
+
+            inductor_ok = (L_min <= results.inductance * 1e6 <= L_max) and (max_current <= I_max)
+            st.info(f"📊 **Available Inductors:** {L_min:.0f}µH-{L_max:.0f}µH, Current: {I_min:.2f}A-{I_max:.2f}A. "
+                   f"Your requirements {'✅ match' if inductor_ok else '❌ exceed'} available range.")
+        except Exception:
+            st.info("📊 **Available Inductors:** range data unavailable from component database.")
         
         # Use new standardized display system
         from lib.component_display import display_component_table, filter_suggestions_by_source

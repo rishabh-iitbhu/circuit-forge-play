@@ -25,6 +25,12 @@ except ImportError as e:
 
 def show():
     """Display full component library page"""
+    # Always reload component database on page load so displayed data is fresh
+    try:
+        from lib.component_data import reload_component_data
+        reload_component_data()
+    except Exception:
+        pass
     
     # Back button and reload functionality
     col1, col2, col3, col4 = st.columns([1, 3, 2, 2])

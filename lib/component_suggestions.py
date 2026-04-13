@@ -124,23 +124,14 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
     except Exception as e:
         applied_heuristics.append(f"⚠️ Using default algorithm (heuristics error: {str(e)[:50]})")
     
-    # NEW: Calculate Vpeak with overshoot for VDS derating (from MOSFET Design heuristics)
-    # Vpeak = Vin + 25% overshoot (standard industry practice)
-    vpeak = max_voltage * 1.25
-    applied_heuristics.append(f"📏 VDS calculation: Vpeak={vpeak:.1f}V (Vin + 25% overshoot)")
-    
-    # VDS derating factors based on MOSFET type (Si vs SiC)
-    # Si MOSFET: 0.6-0.7x Vpeak, SiC MOSFET: 0.7-0.8x Vpeak
-    # Using conservative 0.65x for Si, 0.75x for SiC
-    si_vds_factor = 0.65
-    sic_vds_factor = 0.75
-    required_vds_si = vpeak / si_vds_factor
-    required_vds_sic = vpeak / sic_vds_factor
-    applied_heuristics.append(f"⚡ VDS margin: Si={required_vds_si:.0f}V, SiC={required_vds_sic:.0f}V")
-    
-    # Dynamic safety margins based on heuristics
-    voltage_margin = 1.5  # Default 50% margin (for non-adjusted MOSFETs)
-    current_margin = 1.3  # Default 30% margin
+    # Use user-provided max input voltage as primary V reference. Do not add implicit overshoot
+    # or other margins here unless explicitly recommended by a heuristics document. This keeps
+    # the reasoning grounded in user inputs and documented heuristics.
+    vref = max_voltage
+
+    # Default conservative margins; these may be overridden by design heuristics documents
+    voltage_margin = 1.5  # default 50% voltage derating if no heuristics provided
+    current_margin = 1.3  # default 30% current margin if no heuristics provided
     
     # Analyze heuristics for specific margin recommendations
     if heuristics_analysis and heuristics_analysis['selection_criteria']:
@@ -170,10 +161,10 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
                     break
     
     for mosfet in MOSFET_LIBRARY:
-        # NEW: Use VDS calculation with 25% overshoot + derating factor
-        # Check if component meets VDS requirements with proper derating
-        # First, check if it meets the calculated VDS requirement
-        if mosfet.vds < required_vds_si:  # Conservative check (Si threshold)
+        # Check VDS against a conservative required value derived from vref and voltage_margin.
+        # Keep logic simple and grounded: required_vds = vref * voltage_margin
+        required_vds = vref * voltage_margin
+        if mosfet.vds < required_vds:
             continue
         
         # Check current requirement with margin
@@ -184,32 +175,34 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         score = 100.0
         component_heuristics = applied_heuristics.copy()
         
-        # PRIORITY 1: VDS Headroom Assessment
-        # Check against Vpeak for avalanche stress mitigation
-        if mosfet.vds >= vpeak * 2.0:
+        # PRIORITY 1: VDS Headroom Assessment (grounded in vref and heuristics)
+        vds_headroom_ratio = mosfet.vds / required_vds
+        if vds_headroom_ratio >= 2.0:
             score += 15
-            component_heuristics.append("⭐ Excellent VDS headroom (2.0x Vpeak)")
-        elif mosfet.vds >= vpeak * 1.5:
+            component_heuristics.append("Excellent VDS headroom")
+        elif vds_headroom_ratio >= 1.5:
             score += 10
-            component_heuristics.append("✅ Good VDS headroom (1.5x Vpeak)")
-        elif mosfet.vds >= vpeak * 1.25:
+            component_heuristics.append("Good VDS headroom")
+        elif vds_headroom_ratio >= 1.25:
             score += 5
-            component_heuristics.append("⚠️ Minimum VDS headroom (1.25x Vpeak)")
+            component_heuristics.append("Minimum acceptable VDS headroom")
         else:
             score -= 10
-            component_heuristics.append("❌ Insufficient VDS headroom")
+            component_heuristics.append("Insufficient VDS headroom")
         
-        # PRIORITY 2: RDS(on) Optimization (at elevated temperature)
-        # Lower RDS(on) reduces conduction losses
-        if mosfet.rdson < 20:
+        # PRIORITY 2: RDS(on) Optimization. Prefer RDS(on) measured or derated at elevated
+        # junction temperatures when available (e.g., rdson_at_125c). If a high-temperature
+        # figure exists, use it for selection; otherwise fall back to the provided RDS(on).
+        rdson_used = getattr(mosfet, 'rdson_at_125c', None) or mosfet.rdson
+        if rdson_used and rdson_used < 20:
             score += 10
-            component_heuristics.append("💎 Low RDS(on) (<20mΩ)")
-        elif mosfet.rdson < 50:
+            component_heuristics.append("Low RDS(on) at elevated temp")
+        elif rdson_used and rdson_used < 50:
             score += 5
-            component_heuristics.append("✅ Moderate RDS(on) (<50mΩ)")
-        else:
-            score -= (mosfet.rdson - 50) / 5
-            component_heuristics.append(f"⚠️ Higher RDS(on) ({mosfet.rdson}mΩ)")
+            component_heuristics.append("Moderate RDS(on) at elevated temp")
+        elif rdson_used:
+            score -= (rdson_used - 50) / 5
+            component_heuristics.append(f"Higher RDS(on) at temperature: {rdson_used}mΩ")
         
         # Account for high frequency penalties on RDS(on)
         if frequency_hz > 100000:
@@ -218,72 +211,82 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
             component_heuristics.append(f"🔄 High-freq loss penalty ({rdson_penalty:.1f}pts)")
         
         # PRIORITY 3: Gate Voltage Protection (VGS)
-        # Check for safe VGS limits (±20V for Si, 18V/-5V for SiC)
-        if hasattr(mosfet, 'vgs_max'):
-            if mosfet.vgs_max >= 20:
-                score += 5
-                component_heuristics.append("🛡️ Safe VGS limits (≥20V)")
+        # Check for documented VGS limits where available; include a small preference for
+        # devices that allow common gate drive voltages (e.g., 10-12V, 12-20V).
+        if hasattr(mosfet, 'vgs_max') and mosfet.vgs_max:
+            if mosfet.vgs_max >= 12:
+                score += 3
+                component_heuristics.append("Documented VGS limit supports common gate drives")
         
         # PRIORITY 4: dv/dt Immunity
-        # Low Qgd/Qgs ratio and low package inductance are better
+        # Low Qgd/Qgs ratio and low package inductance are better. Only use these
+        # parameters when they exist in the database; avoid extrapolating values.
         gate_charge_quality = 0
         if hasattr(mosfet, 'qgd') and hasattr(mosfet, 'qgs') and mosfet.qgs > 0:
             qgd_qgs_ratio = mosfet.qgd / mosfet.qgs
             if qgd_qgs_ratio < 0.5:  # Low ratio = better dv/dt immunity
                 score += 8
-                component_heuristics.append(f"⚙️ Excellent dv/dt immunity (Qgd/Qgs={qgd_qgs_ratio:.2f})")
+                component_heuristics.append(f"Excellent dv/dt immunity (Qgd/Qgs={qgd_qgs_ratio:.2f})")
                 gate_charge_quality = 2
             elif qgd_qgs_ratio < 0.8:
                 score += 4
-                component_heuristics.append(f"✅ Good dv/dt immunity (Qgd/Qgs={qgd_qgs_ratio:.2f})")
+                component_heuristics.append(f"Good dv/dt immunity (Qgd/Qgs={qgd_qgs_ratio:.2f})")
                 gate_charge_quality = 1
         
-        if hasattr(mosfet, 'package_inductance'):
+        if hasattr(mosfet, 'package_inductance') and mosfet.package_inductance is not None:
             if mosfet.package_inductance < 2:  # nH, lower is better
                 score += 5
-                component_heuristics.append(f"📦 Low package inductance ({mosfet.package_inductance}nH)")
+                component_heuristics.append(f"Low package inductance ({mosfet.package_inductance}nH)")
             elif mosfet.package_inductance > 5:
                 score -= 3
-                component_heuristics.append(f"⚠️ Higher package inductance ({mosfet.package_inductance}nH)")
+                component_heuristics.append(f"Higher package inductance ({mosfet.package_inductance}nH)")
         
         # PRIORITY 5: Safe Operating Area (SOA)
-        # Ensure component stays away from SOA boundaries
+        # Compute current margin relative to the required operating current. We present a
+        # conservative preference for components with moderate margin (1.5-3x) but avoid
+        # overclaiming functionality beyond the documented datasheet values.
         current_ratio = mosfet.id / (max_current * current_margin)
-        if 1.5 <= current_ratio <= 3.0:  # Good safety margin (1.5-3x)
+        if 1.5 <= current_ratio <= 3.0:
             score += 5
-            component_heuristics.append(f"📊 SOA safety: {current_ratio:.1f}x current margin")
-        elif current_ratio > 3.0:  # Excessive margin
+            component_heuristics.append(f"SOA margin: {current_ratio:.1f}x")
+        elif current_ratio > 3.0:
             score -= (current_ratio - 3.0) * 2
-            component_heuristics.append(f"⚠️ Overdimensioned: {current_ratio:.1f}x current")
+            component_heuristics.append(f"Large ID margin: {current_ratio:.1f}x (may be overdimensioned)")
         
         # Voltage ratio optimization
         voltage_ratio = mosfet.vds / (max_voltage * voltage_margin)
-        if 1.2 <= voltage_ratio <= 2.0:  # Sweet spot for voltage utilization
+        if 1.2 <= voltage_ratio <= 2.0:
             score += 5
-            component_heuristics.append("⚡ Optimal voltage utilization")
+            component_heuristics.append("Good voltage utilization")
         
-        # Gate charge optimization for high frequency (legacy support)
-        if mosfet.qg > 0 and frequency_hz > 50000:
-            if mosfet.qg < 30:  # Low gate charge is good for high frequency
+        # Gate charge optimization for high frequency (use when data available)
+        if hasattr(mosfet, 'qg') and mosfet.qg and frequency_hz > 50000:
+            if mosfet.qg < 30:
                 score += 8
-                component_heuristics.append("🚀 Low gate charge for high frequency")
-            elif mosfet.qg > 60:  # High gate charge penalty
+                component_heuristics.append("Low gate charge for high frequency")
+            elif mosfet.qg > 60:
                 score -= 5
-                component_heuristics.append("⚠️ High gate charge penalty")
+                component_heuristics.append("High gate charge penalty")
         
-        # Efficiency rating bonus
-        if '98%' in mosfet.efficiency_range or '97%' in mosfet.efficiency_range:
-            score += 5
-            component_heuristics.append("⭐ High efficiency rating (97-98%)")
+        # Efficiency rating bonus when documented
+        if hasattr(mosfet, 'efficiency_range') and mosfet.efficiency_range:
+            if '98%' in mosfet.efficiency_range or '97%' in mosfet.efficiency_range:
+                score += 5
+                component_heuristics.append("Documented high efficiency range")
         
         # Build comprehensive reason string
-        reason = f"VDS={mosfet.vds}V ({mosfet.vds/vpeak:.1f}x Vpeak), "
-        reason += f"ID={mosfet.id}A ({current_ratio:.1f}x margin), "
-        reason += f"RDS(on)={mosfet.rdson}mΩ. {mosfet.typical_use}"
-        
-        # Add heuristics summary to reason
-        if component_heuristics:
-            reason += f". Applied: {'; '.join(component_heuristics[:2])}"
+        # Build a grounded reason string. Mention the user input used, the datasheet fields
+        # relied upon (VDS, ID, RDS(on) at elevated temp if present), and avoid speculative claims.
+        reason = f"VDS={mosfet.vds}V, ID={mosfet.id}A ({current_ratio:.1f}x required margin). "
+        rdson_report = getattr(mosfet, 'rdson_at_125c', None) or getattr(mosfet, 'rdson', None)
+        if rdson_report:
+            reason += f"RDS(on)@temp={rdson_report}mΩ. "
+        if mosfet.typical_use:
+            reason += f"{mosfet.typical_use}. "
+
+        # Note about ID rating being a datasheet ideal value
+        reason += "Rationale: recommended components list ID (continuous drain current) > computed RMS current; "
+        reason += "ID values are datasheet-rated under ideal conditions and actual IDmax may be lower in practice."
         
         suggestions.append(ComponentSuggestion(
             component=mosfet,
