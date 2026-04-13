@@ -1,0 +1,64 @@
+name: Report Deploy Run
+
+on:
+  workflow_run:
+    workflows: ["Verify Streamlit Deploy"]
+    types: [completed]
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    env:
+      APP_URL: https://circuit-forge-play-app31.streamlit.app/
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update issues and comments (using GH_API_TOKEN)
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GH_API_TOKEN }}
+          script: |
+            const run = context.payload.workflow_run
+            const conclusion = run.conclusion
+            const sha = run.head_sha
+            const appUrl = process.env.APP_URL
+
+            if (conclusion === 'success') {
+              // If a previous FAILURE issue exists, comment and close it
+              const { data: issues } = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state: 'open' })
+              const failure = issues.find(i => i.title && i.title.includes('FAILURE'))
+              if (failure) {
+                await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: failure.number, body: `✅ Deployment successful for commit ${sha}\n\nApp URL: ${appUrl}` })
+                await github.rest.issues.update({ owner: context.repo.owner, repo: context.repo.repo, issue_number: failure.number, state: 'closed' })
+              }
+            } else {
+              // On failure, ensure a failure issue exists (the verify workflow may already create one)
+              const title = 'Streamlit deployment status (automated) - FAILURE'
+              const body = `❌ Deployment failed for commit ${sha} within verify timeout.\n\nApp URL: ${appUrl}`
+              const { data: issues } = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state: 'open' })
+              let existing = issues.find(i => i.title === title)
+              if (existing) {
+                await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number, body })
+              } else {
+                await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['deployment','failure'] })
+              }
+            }
+
+      - name: Notify Slack (if configured)
+        if: secrets.SLACK_WEBHOOK_URL != ''
+        run: |
+          SHA=${{ github.event.workflow_run.head_sha }}
+          CONCL=${{ github.event.workflow_run.conclusion }}
+          APP_URL=${APP_URL}
+          if [ "$CONCL" = "success" ]; then
+            MSG="✅ Streamlit deployed successfully for ${SHA} — ${APP_URL}"
+          else
+            MSG="❌ Streamlit deployment failed for ${SHA} — ${APP_URL}"
+          fi
+          curl -s -X POST -H 'Content-type: application/json' --data "{\"text\": \"$MSG\"}" "${{ secrets.SLACK_WEBHOOK_URL }}"
+
+      - name: Output summary
+        run: |
+          echo "Reported deploy run for ${GITHUB_REPOSITORY}. Check issues for details."
