@@ -21,17 +21,32 @@ jobs:
         run: |
           set -e
           attempts=0
+          last_resp_file=$(mktemp)
+          echo "Checking $APP_URL with up to $RETRIES attempts (sleep $SLEEP_SECONDS)" > "$last_resp_file"
           while [ $attempts -lt $RETRIES ]; do
-            http_code=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL") || true
-            echo "Attempt $attempts: HTTP $http_code"
+            # capture headers and body to temporary files for debugging
+            resp_headers=$(mktemp)
+            resp_body=$(mktemp)
+            http_code=$(curl -s -D "$resp_headers" -o "$resp_body" -w "%{http_code}" "$APP_URL" || true)
+            echo "Attempt $attempts: HTTP $http_code" | tee -a "$last_resp_file"
+            echo "--- HEADERS ---" >> "$last_resp_file"
+            cat "$resp_headers" >> "$last_resp_file"
+            echo "--- BODY (truncated) ---" >> "$last_resp_file"
+            head -n 200 "$resp_body" >> "$last_resp_file" || true
+
             if [ "$http_code" = "200" ]; then
               echo "app_available=true" >> $GITHUB_OUTPUT
+              # save last response for records
+              mv "$last_resp_file" "$GITHUB_WORKSPACE/verify_last_response.txt" || true
               exit 0
             fi
+
             attempts=$((attempts+1))
             sleep $SLEEP_SECONDS
           done
           echo "app_available=false" >> $GITHUB_OUTPUT
+          # save last response for upload
+          mv "$last_resp_file" "$GITHUB_WORKSPACE/verify_last_response.txt" || true
 
       - name: Create or update Deployment Status issue (FAILURES ONLY)
         if: ${{ steps.wait_for_app.outputs.app_available != 'true' }}
@@ -112,3 +127,10 @@ jobs:
         run: |
           echo "Streamlit app did not become available within timeout." >&2
           exit 1
+
+      - name: Upload verify response (for debugging)
+        if: ${{ steps.wait_for_app.outputs.app_available != 'true' }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: verify-last-response
+          path: verify_last_response.txt
