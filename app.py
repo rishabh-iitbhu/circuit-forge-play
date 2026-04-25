@@ -18,7 +18,7 @@ Workflow: .github/workflows/deploy-streamlit.yml
 - Live URL: https://circuit-forge-play-app31.streamlit.app/
 
 Required Secrets (configure in Streamlit Cloud app settings):
-- OPENAI_API_KEY: For LLM assistant functionality
+- OPENAI_API_KEY: For LLM assistant functionality   
 - Other API keys as needed (see .streamlit/secrets.example.toml)
 
 To trigger deployment:

@@ -50,6 +50,47 @@ def get_component_ranges():
             'frequency': (50000, 1000000)
         }
 
+
+def compute_available_inductor_ranges(required_inductance_uh, max_current, inductor_suggestions=None, use_web_search=False):
+    """
+    Compute available inductor ranges depending on selected source.
+
+    Args:
+        required_inductance_uh: Required inductance in µH
+        max_current: Required max current in A
+        inductor_suggestions: Optional list of ComponentSuggestion returned when using web search
+        use_web_search: If True, derive ranges from web suggestions, otherwise from local INDUCTOR_LIBRARY
+
+    Returns:
+        (L_min, L_max, I_min, I_max, inductor_ok)
+    """
+    try:
+        if use_web_search and inductor_suggestions:
+            inductances = [getattr(s.component, 'inductance', 0) for s in inductor_suggestions if getattr(s.component, 'inductance', 0) > 0]
+            currents = [getattr(s.component, 'current', 0) for s in inductor_suggestions if getattr(s.component, 'current', 0) > 0]
+        else:
+            # Local DB fallback
+            from lib.component_data import INDUCTOR_LIBRARY
+            inductances = [i.inductance for i in INDUCTOR_LIBRARY if hasattr(i, 'inductance') and i.inductance > 0]
+            currents = [i.current for i in INDUCTOR_LIBRARY if hasattr(i, 'current') and i.current > 0]
+
+        if inductances:
+            L_min = min(inductances)
+            L_max = max(inductances)
+        else:
+            L_min, L_max = 0, 0
+
+        if currents:
+            I_min = min(currents)
+            I_max = max(currents)
+        else:
+            I_min, I_max = 0, 0
+
+        inductor_ok = (L_min <= required_inductance_uh <= L_max) and (max_current <= I_max)
+        return (L_min, L_max, I_min, I_max, inductor_ok)
+    except Exception:
+        return (0, 0, 0, 0, False)
+
 def check_component_availability(mosfet_suggestions, input_cap_suggestions, output_cap_suggestions, inductor_suggestions):
     """
     Check if suitable components are available for simulation
@@ -324,24 +365,21 @@ def show():
         st.info(f"🔍 **Inductor Debug:** Required: {results.inductance * 1e6:.1f}µH, Max current: {max_current:.2f}A, "
                f"Switching freq: {switching_freq/1000:.0f}kHz, Found: {len(inductor_suggestions) if inductor_suggestions else 0} inductor(s)")
 
-        # Compute available ranges from the loaded inductor database
+        # Compute available ranges dynamically based on selected source
         try:
-            inductances = [i.inductance for i in INDUCTOR_LIBRARY if hasattr(i, 'inductance') and i.inductance > 0]
-            currents = [i.current for i in INDUCTOR_LIBRARY if hasattr(i, 'current') and i.current > 0]
-            if inductances:
-                L_min = min(inductances)
-                L_max = max(inductances)
-            else:
-                L_min, L_max = 0, 0
-            if currents:
-                I_min = min(currents)
-                I_max = max(currents)
-            else:
-                I_min, I_max = 0, 0
+            # Use web-derived suggestions if in web mode, otherwise use local DB
+            L_min, L_max, I_min, I_max, inductor_ok = compute_available_inductor_ranges(
+                required_inductance_uh=results.inductance * 1e6,
+                max_current=max_current,
+                inductor_suggestions=inductor_suggestions,
+                use_web_search=use_web_search
+            )
 
-            inductor_ok = (L_min <= results.inductance * 1e6 <= L_max) and (max_current <= I_max)
-            st.info(f"📊 **Available Inductors:** {L_min:.0f}µH-{L_max:.0f}µH, Current: {I_min:.2f}A-{I_max:.2f}A. "
-                   f"Your requirements {'✅ match' if inductor_ok else '❌ exceed'} available range.")
+            if L_min == 0 and L_max == 0 and I_min == 0 and I_max == 0:
+                st.info("📊 **Available Inductors:** range data unavailable from component database.")
+            else:
+                st.info(f"📊 **Available Inductors:** {L_min:.0f}µH-{L_max:.0f}µH, Current: {I_min:.2f}A-{I_max:.2f}A. "
+                       f"Your requirements {'✅ match' if inductor_ok else '❌ exceed'} available range.")
         except Exception:
             st.info("📊 **Available Inductors:** range data unavailable from component database.")
         
