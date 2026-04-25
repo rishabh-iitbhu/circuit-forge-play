@@ -124,14 +124,14 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
     except Exception as e:
         applied_heuristics.append(f"⚠️ Using default algorithm (heuristics error: {str(e)[:50]})")
     
-    # Use user-provided max input voltage as primary V reference. Do not add implicit overshoot
-    # or other margins here unless explicitly recommended by a heuristics document. This keeps
-    # the reasoning grounded in user inputs and documented heuristics.
-    vref = max_voltage
+    # Ground selection on the user-provided Vin (use Vin max passed in as max_voltage).
+    # DO NOT extrapolate Vin from other inputs; keep reasoning directly tied to
+    # documented selection criteria from heuristics documents when available.
+    vin_max = max_voltage
 
-    # Default conservative margins; these may be overridden by design heuristics documents
-    voltage_margin = 1.5  # default 50% voltage derating if no heuristics provided
-    current_margin = 1.3  # default 30% current margin if no heuristics provided
+    # Default conservative margins; may be overridden by extracted heuristics
+    voltage_margin = 1.5  # default 50% VDS derating when heuristics absent
+    current_margin = 1.3  # default 30% ID margin when heuristics absent
     
     # Analyze heuristics for specific margin recommendations
     if heuristics_analysis and heuristics_analysis['selection_criteria']:
@@ -161,14 +161,16 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
                     break
     
     for mosfet in MOSFET_LIBRARY:
-        # Check VDS against a conservative required value derived from vref and voltage_margin.
-        # Keep logic simple and grounded: required_vds = vref * voltage_margin
-        required_vds = vref * voltage_margin
+        # Check VDS against a conservative required value derived from Vin_max and voltage_margin.
+        # Keep logic grounded in the user input (Vin max) and avoid extrapolation.
+        required_vds = vin_max * voltage_margin
         if mosfet.vds < required_vds:
             continue
         
-        # Check current requirement with margin
-        if mosfet.id < max_current * current_margin:
+        # Check current requirement with margin (compare against computed RMS/current requirement).
+        # We treat `max_current` as the user's computed RMS current requirement for selection.
+        computed_rms_current = max_current
+        if mosfet.id < computed_rms_current * current_margin:
             continue
         
         # Calculate suitability score with NEW heuristics
@@ -191,9 +193,11 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
             component_heuristics.append("Insufficient VDS headroom")
         
         # PRIORITY 2: RDS(on) Optimization. Prefer RDS(on) measured or derated at elevated
-        # junction temperatures when available (e.g., rdson_at_125c). If a high-temperature
-        # figure exists, use it for selection; otherwise fall back to the provided RDS(on).
-        rdson_used = getattr(mosfet, 'rdson_at_125c', None) or mosfet.rdson
+        # junction temperatures when available (e.g., `rdson_at_125c`). Using an elevated
+        # temperature figure gives a better estimate of conduction losses because RDS(on)
+        # increases with temperature. If no elevated-temp value exists, fall back to the
+        # provided RDS(on) in the database.
+        rdson_used = getattr(mosfet, 'rdson_at_125c', None) or getattr(mosfet, 'rdson', None)
         if rdson_used and rdson_used < 20:
             score += 10
             component_heuristics.append("Low RDS(on) at elevated temp")
@@ -274,19 +278,32 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
                 score += 5
                 component_heuristics.append("Documented high efficiency range")
         
-        # Build comprehensive reason string
-        # Build a grounded reason string. Mention the user input used, the datasheet fields
-        # relied upon (VDS, ID, RDS(on) at elevated temp if present), and avoid speculative claims.
-        reason = f"VDS={mosfet.vds}V, ID={mosfet.id}A ({current_ratio:.1f}x required margin). "
+        # Build comprehensive, grounded reason string. Explicitly reference user inputs
+        # and the datasheet fields relied upon, and avoid speculative extrapolation.
+        reason = (
+            f"VDS={mosfet.vds}V, IDmax={mosfet.id}A ({current_ratio:.1f}x margin vs computed RMS {computed_rms_current:.2f}A). "
+        )
+
+        # Report which RDS(on) value was used for comparison (prefer elevated-temp if available)
         rdson_report = getattr(mosfet, 'rdson_at_125c', None) or getattr(mosfet, 'rdson', None)
         if rdson_report:
-            reason += f"RDS(on)@temp={rdson_report}mΩ. "
+            reason += f"RDS(on) used for comparison: {rdson_report}mΩ (preferred at elevated temp when available). "
+
         if mosfet.typical_use:
             reason += f"{mosfet.typical_use}. "
 
-        # Note about ID rating being a datasheet ideal value
-        reason += "Rationale: recommended components list ID (continuous drain current) > computed RMS current; "
-        reason += "ID values are datasheet-rated under ideal conditions and actual IDmax may be lower in practice."
+        # Explain ID rating caveat clearly: datasheet IDmax measured under ideal conditions
+        reason += (
+            "Rationale: recommended components have IDmax > computed RMS current; "
+            "note that IDmax values are datasheet ratings measured under ideal conditions, "
+            "so actual usable IDmax in your system may be lower due to thermal and packaging constraints. "
+        )
+
+        # Explain why RDS(on) at temperature matters
+        reason += (
+            "RDS(on) increases with temperature and directly affects conduction loss, "
+            "so comparing RDS(on) at elevated temperatures gives a better indication of real-world conduction losses."
+        )
         
         suggestions.append(ComponentSuggestion(
             component=mosfet,
