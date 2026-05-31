@@ -428,24 +428,27 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
         if st.button("Show VDS calculation logic", key=vds_toggle_key):
             st.session_state[vds_toggle_key] = True
     else:
-        st.write("**VDS Calculation Logic**")
-        st.write(f"- Vin max: {details.get('vin_max', 'N/A')} V")
+        st.subheader("VDS Calculation Logic")
+        lines = []
+        lines.append(f"- **Vin max:** {details.get('vin_max', 'N/A')} V")
         if details.get('vin_peak'):
-            st.write(f"- Estimated Vpeak (Vin + 25% overshoot): {details['vin_peak']:.1f} V")
-            st.write("  - This 25% overshoot is a reasonable conservative estimate for switching transients.")
+            lines.append(f"- **Estimated Vpeak (Vin + 25% overshoot):** {details['vin_peak']:.1f} V")
+            lines.append("  - This 25% overshoot is a reasonable conservative estimate for switching transients.")
+            lines.append("  - Calculate Vpeak = Vin + Vovershoot.")
         if details.get('vds_rating_factor'):
-            st.write(f"- VDS rating factor: {details['vds_rating_factor']:.2f} ({details.get('rating_factor_source', 'standard')})")
+            lines.append(f"- **VDS rating factor:** {details['vds_rating_factor']:.2f} ({details.get('rating_factor_source', 'standard')})")
             if details['vds_rating_factor'] == 0.6:
-                st.write("  - 0.6 is a standard conservative VDS rating factor for silicon MOSFETs.")
+                lines.append("  - 0.6 is a standard conservative VDS rating factor for silicon MOSFETs.")
         if details.get('required_vds'):
-            st.write(f"- Required VDS rating: {details['required_vds']:.1f} V")
-        st.write(f"- Actual MOSFET VDS: {getattr(comp, 'vds', 'N/A')} V")
+            lines.append(f"- **Required VDS rating:** {details['required_vds']:.1f} V")
+        lines.append(f"- **Actual MOSFET VDS:** {getattr(comp, 'vds', 'N/A')} V")
         if details.get('vds_headroom_ratio'):
-            st.write(f"- VDS headroom ratio: {details['vds_headroom_ratio']:.2f}x")
+            lines.append(f"- **VDS headroom ratio:** {details['vds_headroom_ratio']:.2f}x")
         if details.get('overshoot_guidance'):
-            st.write("**Heuristic VDS overshoot guidance**")
+            lines.append("\n**Heuristic VDS overshoot guidance**")
             for guidance in details['overshoot_guidance'][:3]:
-                st.write(f"- {guidance}")
+                lines.append(f"- {guidance}")
+        st.markdown("\n".join(lines))
         if st.button("Hide VDS calculation logic", key=f"hide_{vds_toggle_key}"):
             st.session_state[vds_toggle_key] = False
 
