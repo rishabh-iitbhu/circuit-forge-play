@@ -216,6 +216,7 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         # increases with temperature. If no elevated-temp value exists, fall back to the
         # provided RDS(on) in the database.
         rdson_used = getattr(mosfet, 'rdson_at_125c', None) or getattr(mosfet, 'rdson', None)
+        rdson_report = rdson_used
         if rdson_used and rdson_used < 20:
             score += 10
             component_heuristics.append("Low RDS(on) at elevated temp")
@@ -225,10 +226,9 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         elif rdson_used:
             score -= (rdson_used - 50) / 5
             component_heuristics.append(f"Higher RDS(on) at temperature: {rdson_used}mΩ")
-        
+
         # Account for high frequency penalties on RDS(on)
-        if frequency_hz > 100000:
-            rdson_penalty = mosfet.rdson * 0.1
+        if frequency_hz > 100000 and hasattr(mosfet, 'rdson'):
             score -= rdson_penalty
             component_heuristics.append(f"🔄 High-freq loss penalty ({rdson_penalty:.1f}pts)")
         
