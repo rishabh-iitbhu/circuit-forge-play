@@ -428,12 +428,12 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
         if st.button("Show VDS calculation logic", key=vds_toggle_key):
             st.session_state[vds_toggle_key] = True
     else:
-        st.subheader("VDS Calculation Logic")
+        st.subheader("VDS Calculation Logic and Reasoning")
         lines = []
         lines.append(f"- **Vin max:** {details.get('vin_max', 'N/A')} V")
         if details.get('vin_peak'):
             lines.append(f"- **Estimated Vpeak (Vin + 25% overshoot):** {details['vin_peak']:.1f} V")
-            lines.append("  - This 25% overshoot is a reasonable conservative estimate for switching transients.")
+            lines.append("  - This 25% overshoot is a reasonable conservative estimate.")
             lines.append("  - Calculate Vpeak = Vin + Vovershoot.")
         if details.get('vds_rating_factor'):
             lines.append(f"- **VDS rating factor:** {details['vds_rating_factor']:.2f} ({details.get('rating_factor_source', 'standard')})")
