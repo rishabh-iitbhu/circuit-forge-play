@@ -128,37 +128,29 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         applied_heuristics.append(f"⚠️ Using default algorithm (heuristics error: {str(e)[:50]})")
     
     # Ground selection on the user-provided Vin (use Vin max passed in as max_voltage).
-    # DO NOT extrapolate Vin from other inputs; keep reasoning directly tied to
-    # documented selection criteria from heuristics documents when available.
+    # Compute Vpeak = Vin + 25% overshoot, then derive required VDS by applying a
+    # conservative MOSFET rating factor: 0.6 for silicon, 0.7 for SiC.
     vin_max = max_voltage
-
-    # Default conservative margins; may be overridden by extracted heuristics
-    voltage_margin = 1.5  # default 50% VDS derating when heuristics absent
-    current_margin = 1.3  # default 30% ID margin when heuristics absent
-    vds_derating_factor = None
+    overshoot_multiplier = 1.25
+    default_silicon_rating_factor = 0.6
+    default_sic_rating_factor = 0.7
+    extracted_vds_rating_guidelines: List[str] = []
     overshoot_guidance_lines: List[str] = []
+    current_margin = 1.3  # default 30% ID margin when heuristics absent
     
-    # Analyze heuristics for specific margin recommendations
+    # Analyze heuristics for VDS rating or overshoot guidance
     if heuristics_analysis and heuristics_analysis['selection_criteria']:
         for doc_criteria in heuristics_analysis['selection_criteria'].values():
-            # Look for VDS derating guidelines
             for guideline in doc_criteria.get('vds_rating_guidelines', []):
-                if '0.7 to 0.8' in guideline:
-                    vds_derating_factor = 0.75
-                    voltage_margin = 1.0 / vds_derating_factor
-                    applied_heuristics.append(f"📋 SiC VDS derating: 0.7-0.8x from heuristics")
-                elif '0.6 to 0.7' in guideline:
-                    vds_derating_factor = 0.65
-                    voltage_margin = 1.0 / vds_derating_factor
-                    applied_heuristics.append(f"📋 Si VDS derating: 0.6-0.7x from heuristics")
-                elif '0.8' in guideline:
-                    vds_derating_factor = 0.8
-                    voltage_margin = 1.0 / vds_derating_factor
-                    applied_heuristics.append(f"📋 VDS derating: 0.8x from heuristics")
+                extracted_vds_rating_guidelines.append(guideline)
+                if '0.6' in guideline:
+                    applied_heuristics.append("📋 VDS rating guidance includes 0.6 factor")
+                elif '0.7' in guideline and 'sic' in guideline.lower():
+                    applied_heuristics.append("📋 VDS rating guidance includes 0.7 factor for SiC")
                 elif '0.7' in guideline:
-                    vds_derating_factor = 0.7
-                    voltage_margin = 1.0 / vds_derating_factor
-                    applied_heuristics.append(f"📋 VDS derating: 0.7x from heuristics")
+                    applied_heuristics.append("📋 VDS rating guidance includes 0.7 factor")
+                elif '0.8' in guideline:
+                    applied_heuristics.append("📋 VDS rating guidance includes 0.8 factor")
             
             # VDS overshoot guidance lines
             for line in doc_criteria.get('vds_overshoot_calculation', []):
@@ -179,9 +171,29 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
                     break
     
     for mosfet in MOSFET_LIBRARY:
-        # Check VDS against a conservative required value derived from Vin_max and voltage_margin.
-        # Keep logic grounded in the user input (Vin max) and avoid extrapolation.
-        required_vds = vin_max * voltage_margin
+        mosfet_type = getattr(mosfet, 'mosfet_type', 'Si')
+        rating_factor = default_silicon_rating_factor if mosfet_type.lower() == 'si' else default_sic_rating_factor
+        rating_factor_source = f"default {mosfet_type} rating factor"
+        for guideline in extracted_vds_rating_guidelines:
+            if '0.6' in guideline:
+                rating_factor = 0.6
+                rating_factor_source = "heuristics VDS rating factor"
+                break
+            elif '0.7' in guideline and mosfet_type.lower() == 'sic':
+                rating_factor = 0.7
+                rating_factor_source = "heuristics VDS rating factor"
+                break
+            elif '0.8' in guideline and mosfet_type.lower() == 'sic':
+                rating_factor = 0.8
+                rating_factor_source = "heuristics VDS rating factor"
+                break
+            elif '0.7' in guideline:
+                rating_factor = 0.7
+                rating_factor_source = "heuristics VDS rating factor"
+                break
+
+        vin_peak = vin_max * overshoot_multiplier
+        required_vds = vin_peak / rating_factor
         if mosfet.vds < required_vds:
             continue
         
@@ -277,11 +289,11 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
             score -= (current_ratio - 3.0) * 2
             component_heuristics.append(f"Large ID margin: {current_ratio:.1f}x (may be overdimensioned)")
         
-        # Voltage ratio optimization
-        voltage_ratio = mosfet.vds / (max_voltage * voltage_margin)
+        # Voltage ratio optimization relative to the derived required VDS.
+        voltage_ratio = mosfet.vds / required_vds
         if 1.2 <= voltage_ratio <= 2.0:
             score += 5
-            component_heuristics.append("Good voltage utilization")
+            component_heuristics.append("Good VDS utilization relative to required threshold")
         
         # Gate charge optimization for high frequency (use when data available)
         if hasattr(mosfet, 'qg') and mosfet.qg and frequency_hz > 50000:
@@ -300,12 +312,12 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         
         # Build a focused candidate rationale centered on VDS validity
         reason = (
-            f"Valid candidate because VDS={mosfet.vds}V exceeds the derived requirement of {required_vds:.1f}V "
-            f"for Vin max {vin_max}V using a derating factor of {voltage_margin:.2f}. "
+            f"Valid candidate because VDS={mosfet.vds}V exceeds the required VDS of {required_vds:.1f}V, "
+            f"based on Vpeak={vin_peak:.1f}V and a VDS rating factor of {rating_factor:.2f}. "
         )
 
         if heuristics_analysis and heuristics_analysis['selection_criteria']:
-            reason += "This selection follows the updated MOSFET heuristics document for safe VDS derating and overshoot protection. "
+            reason += "This selection follows the updated MOSFET heuristics document for safe VDS rating and overshoot protection. "
 
         if rdson_report:
             reason += f"The device also meets conduction loss guidance with RDS(on)={rdson_report}mΩ. "
@@ -316,10 +328,11 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         
         selection_details = {
             'vin_max': vin_max,
+            'vin_peak': vin_peak,
+            'vds_rating_factor': rating_factor,
+            'rating_factor_source': rating_factor_source,
             'required_vds': required_vds,
-            'voltage_margin': voltage_margin,
             'vds_headroom_ratio': vds_headroom_ratio,
-            'vds_derating_factor': vds_derating_factor,
             'overshoot_guidance': overshoot_guidance_lines,
             'heuristics_documents': heuristics_analysis.get('documents_found', []) if heuristics_analysis else []
         }

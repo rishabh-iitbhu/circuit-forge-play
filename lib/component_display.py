@@ -420,7 +420,6 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
     details = suggestion.selection_details or {}
     
     st.write("**VDS Section**")
-    st.info(suggestion.reason)
 
     part_key = getattr(comp, 'part_number', getattr(comp, 'name', 'MOSFET')).replace(' ', '_').replace('/', '_')
     vds_toggle_key = f"show_vds_calc_{part_key}"
@@ -431,10 +430,13 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
     else:
         st.write("**VDS Calculation Logic**")
         st.write(f"- Vin max: {details.get('vin_max', 'N/A')} V")
-        if details.get('voltage_margin'):
-            st.write(f"- Derating factor: {details['voltage_margin']:.2f}")
+        if details.get('vin_peak'):
+            st.write(f"- Estimated Vpeak (Vin + 25% overshoot): {details['vin_peak']:.1f} V")
+        if details.get('vds_rating_factor'):
+            st.write(f"- VDS rating factor: {details['vds_rating_factor']:.2f} ({details.get('rating_factor_source', 'standard')})")
         if details.get('required_vds'):
-            st.write(f"- Required VDS threshold: {details['required_vds']:.1f} V")
+            st.write(f"- Required VDS rating: {details['required_vds']:.1f} V")
+        st.write(f"- Actual MOSFET VDS: {getattr(comp, 'vds', 'N/A')} V")
         if details.get('vds_headroom_ratio'):
             st.write(f"- VDS headroom ratio: {details['vds_headroom_ratio']:.2f}x")
         if details.get('overshoot_guidance'):
