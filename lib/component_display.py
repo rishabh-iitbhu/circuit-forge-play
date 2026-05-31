@@ -29,7 +29,7 @@ def create_component_table(suggestions: List[ComponentSuggestion], component_typ
         
         # Essential information only - streamlined table
         row = {
-            'Select': f"🔘 #{i + 1}",  # Click indicator
+            'Select': "🔘",  # Click indicator
             'Part Number': getattr(comp, 'part_number', getattr(comp, 'name', 'N/A')),
             'Manufacturer': getattr(comp, 'manufacturer', 'N/A'),
             'Source': getattr(comp, 'distributor', 'Local Database'),
@@ -68,7 +68,7 @@ def create_component_table(suggestions: List[ComponentSuggestion], component_typ
         row.update({
             'Price': getattr(comp, 'price', 'See distributor'),
             'Stock': getattr(comp, 'availability', 'Check stock'),
-            'Why?': f"🤔 #{i + 1}",  # Clickable reasoning column
+            'Why?': "🤔 View VDS",  # Clickable VDS reasoning column
         })
         
         data.append(row)
@@ -239,7 +239,7 @@ def display_component_table(suggestions: List[ComponentSuggestion], component_ty
             clicked_suggestion = suggestions[clicked_idx]
             
             st.write("---")
-            st.subheader(f"🧠 Why #{clicked_idx + 1} is a Top Suggestion")
+            st.subheader("🧠 Why this component is a valid candidate")
             
             # Create two columns for reasoning display
             col1, col2 = st.columns([3, 1])
@@ -258,9 +258,9 @@ def display_component_table(suggestions: List[ComponentSuggestion], component_ty
                 comp = clicked_suggestion.component
                 
                 if component_type == 'mosfet':
-                    st.metric("Score", f"{clicked_suggestion.score:.1f}")
                     st.metric("VDS", f"{getattr(comp, 'vds', 'N/A')}V")
                     st.metric("RDS(on)", f"{getattr(comp, 'rdson', 'N/A')}mΩ")
+                    st.metric("ID", f"{getattr(comp, 'id', 'N/A')}A")
                 elif component_type in ['capacitor', 'input_capacitor']:
                     st.metric("Score", f"{clicked_suggestion.score:.1f}")
                     st.metric("Capacitance", f"{getattr(comp, 'capacitance', 'N/A')}µF")
@@ -287,7 +287,7 @@ def display_component_table(suggestions: List[ComponentSuggestion], component_ty
                 selected_component = stored_suggestions[selected_idx]
                 
                 st.write("---")
-            st.subheader(f"📋 Component Details - #{selected_idx + 1}")
+            st.subheader("📋 Component Details")
             
             comp = selected_component.component
             part_number = getattr(comp, 'part_number', getattr(comp, 'name', f'Component_{selected_idx+1}'))
@@ -400,14 +400,12 @@ def display_component_table(suggestions: List[ComponentSuggestion], component_ty
 
 def show_detailed_rationale(suggestion: ComponentSuggestion, component_type: str):
     """
-    Show detailed rationale for why this component is a top suggestion
+    Show detailed rationale for why this component is a valid candidate
     
     Args:
         suggestion: The component suggestion
         component_type: Type of component
     """
-    comp = suggestion.component
-    
     if component_type == 'mosfet':
         show_mosfet_rationale(suggestion)
     elif component_type in ['capacitor', 'input_capacitor']:
@@ -417,8 +415,36 @@ def show_detailed_rationale(suggestion: ComponentSuggestion, component_type: str
 
 
 def show_mosfet_rationale(suggestion: ComponentSuggestion):
-    """MOSFET rationale display removed to simplify component details."""
-    return
+    """Show MOSFET candidate validity and VDS reasoning"""
+    comp = suggestion.component
+    details = suggestion.selection_details or {}
+    
+    st.write("**VDS Section**")
+    st.info(suggestion.reason)
+
+    part_key = getattr(comp, 'part_number', getattr(comp, 'name', 'MOSFET')).replace(' ', '_').replace('/', '_')
+    vds_toggle_key = f"show_vds_calc_{part_key}"
+
+    if not st.session_state.get(vds_toggle_key, False):
+        if st.button("Show VDS calculation logic", key=vds_toggle_key):
+            st.session_state[vds_toggle_key] = True
+    else:
+        st.write("**VDS Calculation Logic**")
+        st.write(f"- Vin max: {details.get('vin_max', 'N/A')} V")
+        if details.get('voltage_margin'):
+            st.write(f"- Derating factor: {details['voltage_margin']:.2f}")
+        if details.get('required_vds'):
+            st.write(f"- Required VDS threshold: {details['required_vds']:.1f} V")
+        if details.get('vds_headroom_ratio'):
+            st.write(f"- VDS headroom ratio: {details['vds_headroom_ratio']:.2f}x")
+        if details.get('overshoot_guidance'):
+            st.write("**Heuristic VDS overshoot guidance**")
+            for guidance in details['overshoot_guidance'][:3]:
+                st.write(f"- {guidance}")
+        if details.get('heuristics_documents'):
+            st.write(f"- Source document(s): {', '.join(details['heuristics_documents'])}")
+        if st.button("Hide VDS calculation logic", key=f"hide_{vds_toggle_key}"):
+            st.session_state[vds_toggle_key] = False
 
 
 def show_capacitor_rationale(suggestion: ComponentSuggestion, component_type: str):
@@ -429,28 +455,3 @@ def show_capacitor_rationale(suggestion: ComponentSuggestion, component_type: st
 def show_inductor_rationale(suggestion: ComponentSuggestion):
     """Inductor rationale display removed to simplify component details."""
     return
-    """
-    Filter suggestions based on source type (web vs local)
-    
-    Args:
-        suggestions: List of all suggestions
-        use_web_search: If True, return only web results; if False, return only local results
-    
-    Returns:
-        Filtered list of suggestions
-    """
-    if not suggestions:
-        return []
-    
-    filtered = []
-    
-    for suggestion in suggestions:
-        comp = suggestion.component
-        is_web_result = hasattr(comp, 'distributor') and getattr(comp, 'distributor', '') in ['Mouser', 'Digikey']
-        
-        if use_web_search and is_web_result:
-            filtered.append(suggestion)
-        elif not use_web_search and not is_web_result:
-            filtered.append(suggestion)
-    
-    return filtered

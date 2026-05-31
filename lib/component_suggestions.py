@@ -17,10 +17,13 @@ class ComponentSuggestion:
     reason: str
     score: float = 0.0
     heuristics_applied: List[str] = None
+    selection_details: Dict[str, Any] = None
 
     def __post_init__(self):
         if self.heuristics_applied is None:
             self.heuristics_applied = []
+        if self.selection_details is None:
+            self.selection_details = {}
 
 
 def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float = 65000, use_web_search: bool = False) -> List[ComponentSuggestion]:
@@ -132,21 +135,36 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
     # Default conservative margins; may be overridden by extracted heuristics
     voltage_margin = 1.5  # default 50% VDS derating when heuristics absent
     current_margin = 1.3  # default 30% ID margin when heuristics absent
+    vds_derating_factor = None
+    overshoot_guidance_lines: List[str] = []
     
     # Analyze heuristics for specific margin recommendations
     if heuristics_analysis and heuristics_analysis['selection_criteria']:
         for doc_criteria in heuristics_analysis['selection_criteria'].values():
             # Look for VDS derating guidelines
             for guideline in doc_criteria.get('vds_rating_guidelines', []):
-                if '0.6' in guideline or '0.7' in guideline or '0.8' in guideline:
-                    import re
-                    # Extract the derating factor
-                    if '0.7 to 0.8' in guideline:
-                        sic_vds_factor = 0.75
-                        applied_heuristics.append(f"📋 SiC VDS derating: 0.7-0.8x from heuristics")
-                    elif '0.6 to 0.7' in guideline:
-                        si_vds_factor = 0.65
-                        applied_heuristics.append(f"📋 Si VDS derating: 0.6-0.7x from heuristics")
+                if '0.7 to 0.8' in guideline:
+                    vds_derating_factor = 0.75
+                    voltage_margin = 1.0 / vds_derating_factor
+                    applied_heuristics.append(f"📋 SiC VDS derating: 0.7-0.8x from heuristics")
+                elif '0.6 to 0.7' in guideline:
+                    vds_derating_factor = 0.65
+                    voltage_margin = 1.0 / vds_derating_factor
+                    applied_heuristics.append(f"📋 Si VDS derating: 0.6-0.7x from heuristics")
+                elif '0.8' in guideline:
+                    vds_derating_factor = 0.8
+                    voltage_margin = 1.0 / vds_derating_factor
+                    applied_heuristics.append(f"📋 VDS derating: 0.8x from heuristics")
+                elif '0.7' in guideline:
+                    vds_derating_factor = 0.7
+                    voltage_margin = 1.0 / vds_derating_factor
+                    applied_heuristics.append(f"📋 VDS derating: 0.7x from heuristics")
+            
+            # VDS overshoot guidance lines
+            for line in doc_criteria.get('vds_overshoot_calculation', []):
+                overshoot_guidance_lines.append(line)
+                applied_heuristics.append("⚡ VDS overshoot guidance applied")
+                break
             
             # RDS(on) comparison at elevated temperature
             for guideline in doc_criteria.get('rdson_temperature_guidelines', []):
@@ -278,38 +296,38 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
                 score += 5
                 component_heuristics.append("Documented high efficiency range")
         
-        # Build comprehensive, grounded reason string. Explicitly reference user inputs
-        # and the datasheet fields relied upon, and avoid speculative extrapolation.
+        # Build a focused candidate rationale centered on VDS validity
         reason = (
-            f"VDS={mosfet.vds}V, IDmax={mosfet.id}A ({current_ratio:.1f}x margin vs computed RMS {computed_rms_current:.2f}A). "
+            f"Valid candidate because VDS={mosfet.vds}V exceeds the derived requirement of {required_vds:.1f}V "
+            f"for Vin max {vin_max}V using a derating factor of {voltage_margin:.2f}. "
         )
 
-        # Report which RDS(on) value was used for comparison (prefer elevated-temp if available)
-        rdson_report = getattr(mosfet, 'rdson_at_125c', None) or getattr(mosfet, 'rdson', None)
+        if heuristics_analysis and heuristics_analysis['selection_criteria']:
+            reason += "This selection follows the updated MOSFET heuristics document for safe VDS derating and overshoot protection. "
+
         if rdson_report:
-            reason += f"RDS(on) used for comparison: {rdson_report}mΩ (preferred at elevated temp when available). "
+            reason += f"The device also meets conduction loss guidance with RDS(on)={rdson_report}mΩ. "
 
-        if mosfet.typical_use:
-            reason += f"{mosfet.typical_use}. "
-
-        # Explain ID rating caveat clearly: datasheet IDmax measured under ideal conditions
         reason += (
-            "Rationale: recommended components have IDmax > computed RMS current; "
-            "note that IDmax values are datasheet ratings measured under ideal conditions, "
-            "so actual usable IDmax in your system may be lower due to thermal and packaging constraints. "
-        )
-
-        # Explain why RDS(on) at temperature matters
-        reason += (
-            "RDS(on) increases with temperature and directly affects conduction loss, "
-            "so comparing RDS(on) at elevated temperatures gives a better indication of real-world conduction losses."
+            "ID and thermal margins were checked, but the primary candidate decision in this view is driven by documented VDS survivability criteria."
         )
         
+        selection_details = {
+            'vin_max': vin_max,
+            'required_vds': required_vds,
+            'voltage_margin': voltage_margin,
+            'vds_headroom_ratio': vds_headroom_ratio,
+            'vds_derating_factor': vds_derating_factor,
+            'overshoot_guidance': overshoot_guidance_lines,
+            'heuristics_documents': heuristics_analysis.get('documents_found', []) if heuristics_analysis else []
+        }
+
         suggestions.append(ComponentSuggestion(
             component=mosfet,
             reason=reason,
             score=score,
-            heuristics_applied=component_heuristics
+            heuristics_applied=component_heuristics,
+            selection_details=selection_details
         ))
     
     # Sort by score (highest first)
