@@ -251,11 +251,7 @@ def display_component_table(suggestions: List[ComponentSuggestion], component_ty
                 # Show detailed rationale based on component type
                 show_detailed_rationale(clicked_suggestion, component_type)
                 
-                # Show applied heuristics if available
-                if clicked_suggestion.heuristics_applied:
-                    st.write("**Applied Design Heuristics:**")
-                    for heuristic in clicked_suggestion.heuristics_applied:
-                        st.caption(f"✅ {heuristic}")
+                # Applied heuristics display removed
             
             with col2:
                 st.write("**Quick Stats:**")
@@ -356,11 +352,7 @@ def display_component_table(suggestions: List[ComponentSuggestion], component_ty
                 st.write("**Why This Component:**")
                 st.info(selected_component.reason)
                 
-                # Applied heuristics (NEW)
-                if selected_component.heuristics_applied:
-                    st.write("**Applied Design Heuristics:**")
-                    for heuristic in selected_component.heuristics_applied[:5]:  # Show top 5 heuristics
-                        st.caption(f"✅ {heuristic}")
+                # Applied heuristics display removed
             
             with col2:
                 st.write("**📍 Purchase Information**")
