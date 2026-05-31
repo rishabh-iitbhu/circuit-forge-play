@@ -228,7 +228,9 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
             component_heuristics.append(f"Higher RDS(on) at temperature: {rdson_used}mΩ")
 
         # Account for high frequency penalties on RDS(on)
-        if frequency_hz > 100000 and hasattr(mosfet, 'rdson'):
+        rdson_penalty = 0.0
+        if frequency_hz > 100000 and hasattr(mosfet, 'rdson') and mosfet.rdson is not None:
+            rdson_penalty = mosfet.rdson * 0.1
             score -= rdson_penalty
             component_heuristics.append(f"🔄 High-freq loss penalty ({rdson_penalty:.1f}pts)")
         
