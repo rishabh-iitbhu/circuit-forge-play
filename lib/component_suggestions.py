@@ -313,7 +313,8 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         # Build a focused candidate rationale centered on VDS validity
         reason = (
             f"Valid candidate because VDS={mosfet.vds}V exceeds the required VDS of {required_vds:.1f}V, "
-            f"based on Vpeak={vin_peak:.1f}V and a VDS rating factor of {rating_factor:.2f}. "
+            f"based on Vpeak={vin_peak:.1f}V (25% conservative overshoot estimate) "
+            f"and a standard conservative VDS rating factor of {rating_factor:.2f}. "
         )
 
         if heuristics_analysis and heuristics_analysis['selection_criteria']:

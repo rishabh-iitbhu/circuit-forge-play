@@ -443,8 +443,6 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
             st.write("**Heuristic VDS overshoot guidance**")
             for guidance in details['overshoot_guidance'][:3]:
                 st.write(f"- {guidance}")
-        if details.get('heuristics_documents'):
-            st.write(f"- Source document(s): {', '.join(details['heuristics_documents'])}")
         if st.button("Hide VDS calculation logic", key=f"hide_{vds_toggle_key}"):
             st.session_state[vds_toggle_key] = False
 
