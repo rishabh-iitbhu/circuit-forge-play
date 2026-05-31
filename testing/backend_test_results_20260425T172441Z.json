@@ -1,0 +1,60 @@
+[
+  {
+    "test_id": "buck_normal",
+    "description": "Standard 12V->5V, moderate power",
+    "type": "buck",
+    "valid_inputs": true,
+    "inductance_uH": 20.863636363636363,
+    "output_cap_uF": 4.166666666666667,
+    "input_cap_uF": 17.522160379303234,
+    "duty_cycle": 0.38636363636363635,
+    "mosfet_suggestions": 5,
+    "mosfet_sample_reason": "VDS=40.0V, IDmax=70.0A (13.2x margin vs computed RMS 4.08A). RDS(on) used for comparison: 4.5m\u03a9 (preferred at elevated temp when available). PowerCrux optimized. Rationale: recommended components have IDmax > computed RMS current; note that IDmax values are datasheet ratings measured under ideal conditions, so actual usable IDmax in your system may be lower due to thermal and packaging constraints. RDS(on) increases with temperature and directly affects conduction loss, so comparing RDS(on) at elevated temperatures gives a better indication of real-world conduction losses.",
+    "reason_has_IDmax": true,
+    "reason_has_rdson_temp": true
+  },
+  {
+    "test_id": "buck_hf",
+    "description": "High switching frequency scenario",
+    "type": "buck",
+    "valid_inputs": true,
+    "inductance_uH": 14.231250000000001,
+    "output_cap_uF": 2.5,
+    "input_cap_uF": 2.1484374999999996,
+    "duty_cycle": 0.13749999999999998,
+    "mosfet_suggestions": 5,
+    "mosfet_sample_reason": "VDS=60.0V, IDmax=80.0A (19.7x margin vs computed RMS 3.12A). RDS(on) used for comparison: 4.0m\u03a9 (preferred at elevated temp when available). PowerCrux optimized. Rationale: recommended components have IDmax > computed RMS current; note that IDmax values are datasheet ratings measured under ideal conditions, so actual usable IDmax in your system may be lower due to thermal and packaging constraints. RDS(on) increases with temperature and directly affects conduction loss, so comparing RDS(on) at elevated temperatures gives a better indication of real-world conduction losses.",
+    "reason_has_IDmax": true,
+    "reason_has_rdson_temp": true
+  },
+  {
+    "test_id": "buck_high_current",
+    "description": "Low Vout, high power -> high current requirement",
+    "type": "buck",
+    "valid_inputs": true,
+    "inductance_uH": 3.921428571428572,
+    "output_cap_uF": 62.5,
+    "input_cap_uF": 32.14285714285715,
+    "duty_cycle": 0.1285714285714286,
+    "mosfet_suggestions": 5,
+    "mosfet_sample_reason": "VDS=40.0V, IDmax=70.0A (2.2x margin vs computed RMS 25.00A). RDS(on) used for comparison: 4.5m\u03a9 (preferred at elevated temp when available). PowerCrux optimized. Rationale: recommended components have IDmax > computed RMS current; note that IDmax values are datasheet ratings measured under ideal conditions, so actual usable IDmax in your system may be lower due to thermal and packaging constraints. RDS(on) increases with temperature and directly affects conduction loss, so comparing RDS(on) at elevated temperatures gives a better indication of real-world conduction losses.",
+    "reason_has_IDmax": true,
+    "reason_has_rdson_temp": true
+  },
+  {
+    "test_id": "pfc_normal",
+    "description": "Standard PFC case",
+    "type": "pfc",
+    "valid_inputs": true,
+    "inductance_H": 0.0029818124999999997,
+    "capacitance_F": 0.0007957747154594767,
+    "ripple_current_A": 0.2339181286549708
+  },
+  {
+    "test_id": "invalid_inputs",
+    "description": "Negative values should be rejected",
+    "type": "buck",
+    "valid_inputs": false,
+    "result": "invalid_inputs"
+  }
+]

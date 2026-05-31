@@ -425,131 +425,18 @@ def show_detailed_rationale(suggestion: ComponentSuggestion, component_type: str
 
 
 def show_mosfet_rationale(suggestion: ComponentSuggestion):
-    """Show detailed MOSFET selection rationale"""
-    comp = suggestion.component
-    
-    st.write("**🎯 Selection Rationale:**")
-    
-    # VDS Headroom Analysis
-    vds = getattr(comp, 'vds', 0)
-    if vds > 0:
-        st.write(f"• **Voltage Headroom**: {vds}V rating provides excellent protection against voltage spikes and layout-induced overshoots")
-    
-    # Current Capability
-    current = getattr(comp, 'id', 0)
-    if current > 0:
-        st.write(f"• **Current Capacity**: {current}A continuous rating ensures reliable operation with safety margin")
-    
-    # Efficiency Analysis
-    rdson = getattr(comp, 'rdson', 0)
-    if rdson > 0:
-        efficiency = getattr(comp, 'efficiency_range', '')
-        st.write(f"• **Efficiency**: {rdson}mΩ RDS(on) contributes to {efficiency} efficiency range")
-    
-    # Gate Characteristics
-    qg = getattr(comp, 'qg', 0)
-    if qg > 0:
-        st.write(f"• **Gate Drive**: {qg}nC total gate charge enables fast switching with moderate drive requirements")
-    
-    # Thermal Performance
-    if hasattr(comp, 'junction_temp_max'):
-        temp_max = getattr(comp, 'junction_temp_max', 150)
-        st.write(f"• **Thermal Robustness**: {temp_max}°C max junction temperature for reliable high-temperature operation")
-    
-    # Manufacturer Reputation
-    manufacturer = getattr(comp, 'manufacturer', '')
-    if manufacturer:
-        st.write(f"• **Manufacturer Trust**: {manufacturer} components are known for quality and reliability in power applications")
-    
-    st.write("**💡 Why This Beats Alternatives:**")
-    st.write("• Superior balance of voltage/current ratings with efficiency")
-    st.write("• Optimized for the specific switching frequency and thermal requirements")
-    st.write("• Meets all design heuristics from power electronics best practices")
+    """MOSFET rationale display removed to simplify component details."""
+    return
 
 
 def show_capacitor_rationale(suggestion: ComponentSuggestion, component_type: str):
-    """Show detailed capacitor selection rationale"""
-    comp = suggestion.component
-    
-    st.write("**🎯 Selection Rationale:**")
-    
-    # Capacitance Analysis
-    cap = getattr(comp, 'capacitance', 0)
-    if cap > 0:
-        st.write(f"• **Capacitance**: {cap}µF provides optimal filtering with minimal size/weight penalty")
-    
-    # Voltage Rating
-    voltage = getattr(comp, 'voltage', 0)
-    if voltage > 0:
-        st.write(f"• **Voltage Rating**: {voltage}V ensures long-term reliability with voltage derating margin")
-    
-    # ESR Performance
-    esr = getattr(comp, 'esr', '')
-    if esr:
-        st.write(f"• **ESR Performance**: {esr} equivalent series resistance minimizes power losses")
-    
-    # Dielectric Type
-    dielectric = getattr(comp, 'dielectric', getattr(comp, 'type', ''))
-    if dielectric:
-        st.write(f"• **Dielectric**: {dielectric} technology optimized for {'input filtering' if component_type == 'input_capacitor' else 'output decoupling'}")
-    
-    # Temperature Range
-    temp_range = getattr(comp, 'temp_range', '')
-    if temp_range:
-        st.write(f"• **Temperature Range**: {temp_range} ensures operation across full environmental conditions")
-    
-    # Ripple Current (for input capacitors)
-    if component_type == 'input_capacitor' and hasattr(comp, 'ripple_rating'):
-        ripple = getattr(comp, 'ripple_rating', 0)
-        if ripple > 0:
-            st.write(f"• **Ripple Handling**: {ripple}A ripple current rating prevents overheating from AC components")
-    
-    st.write("**💡 Why This Beats Alternatives:**")
-    st.write("• Optimal capacitance-to-size ratio for the application")
-    st.write("• Superior ESR characteristics reduce circuit losses")
-    st.write("• Proven reliability in switching power supply applications")
+    """Capacitor rationale display removed to simplify component details."""
+    return
 
 
 def show_inductor_rationale(suggestion: ComponentSuggestion):
-    """Show detailed inductor selection rationale"""
-    comp = suggestion.component
-    
-    st.write("**🎯 Selection Rationale:**")
-    
-    # Inductance Value
-    inductance = getattr(comp, 'inductance', 0)
-    if inductance > 0:
-        st.write(f"• **Inductance**: {inductance}µH provides optimal ripple current reduction and efficiency")
-    
-    # Current Rating
-    current = getattr(comp, 'current', 0)
-    if current > 0:
-        st.write(f"• **Current Rating**: {current}A saturation current ensures operation without core saturation")
-    
-    # DCR (DC Resistance)
-    dcr = getattr(comp, 'dcr', 0)
-    if dcr > 0:
-        st.write(f"• **Efficiency**: {dcr}mΩ DC resistance minimizes conduction losses in the power path")
-    
-    # Core Material
-    core_type = getattr(comp, 'core_type', '')
-    if core_type:
-        st.write(f"• **Core Technology**: {core_type} material provides optimal balance of size, cost, and performance")
-    
-    # Shielding
-    shielded = getattr(comp, 'shielded', False)
-    if shielded:
-        st.write("• **EMI Performance**: Shielded construction reduces electromagnetic interference")
-    
-    # Package Type
-    package = getattr(comp, 'package', '')
-    if package:
-        st.write(f"• **Package**: {package} form factor optimized for PCB layout and thermal management")
-    
-    st.write("**💡 Why This Beats Alternatives:**")
-    st.write("• Precise inductance value minimizes output ripple and maximizes efficiency")
-    st.write("• Low DCR reduces power losses and improves thermal performance")
-    st.write("• Core saturation current provides safety margin for transient conditions")
+    """Inductor rationale display removed to simplify component details."""
+    return
     """
     Filter suggestions based on source type (web vs local)
     

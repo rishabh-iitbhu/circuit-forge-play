@@ -187,7 +187,7 @@ def main():
         with st.expander("💬 Circuit Forge Intelligence", expanded=False):
             st.caption("Ask for calculations, component lookup, or heuristic summaries. OpenAI function calling powers the answers if configured.")
             user_prompt = st.text_input(
-                "",
+                "LLM Query",
                 key="llm_query",
                 placeholder="e.g. Recommend a MOSFET for a 48V/10A buck.",
                 label_visibility="collapsed",
