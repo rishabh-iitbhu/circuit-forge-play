@@ -484,13 +484,19 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
 
         qgd_qgs_ratio = details.get('qgd_qgs_ratio')
         if qgd_qgs_ratio is not None:
-            lines.append(f"- **Gate charge ratio (Qgd/Qgs):** {qgd_qgs_ratio:.2f}")
+            lines.append(f"- **The ratio of gate-to-drain charge to gate-to-source charge was found to be:** {qgd_qgs_ratio:.2f}.")
+            lines.append(f"  - Source: {details.get('qgd_qgs_ratio_source', 'datasheet charge values')}.")
             lines.append("  - Lower values are preferred because they are less susceptible to induced turn-on through Cgd.")
+        else:
+            lines.append("- **The ratio of gate-to-drain charge to gate-to-source charge was not available in the current component data; it should be sourced from the datasheet values and calculations.**")
 
         package_inductance = details.get('package_inductance_nH')
         if package_inductance not in (None, 0):
-            lines.append(f"- **Package inductance:** {package_inductance} nH")
+            lines.append(f"- **The package inductance was found to be:** {package_inductance} nH.")
+            lines.append(f"  - Source: {details.get('package_inductance_source', 'datasheet/package information')}.")
             lines.append("  - Lower package inductance is preferred because it reduces switching-node ringing and dv/dt susceptibility.")
+        else:
+            lines.append("- **The package inductance was not available in the current component data; it should be sourced from the package/datasheet information.**")
 
         recommendation_reason = details.get('recommendation_reason')
         if recommendation_reason:

@@ -437,7 +437,9 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
             'rdson_at_125c_available': getattr(mosfet, 'rdson_at_125c', None) is not None and getattr(mosfet, 'rdson_at_125c', 0) > 0,
             # dv/dt immunity details
             'qgd_qgs_ratio': (qgd_qgs_ratio if 'qgd_qgs_ratio' in locals() else None),
-            'package_inductance_nH': getattr(mosfet, 'package_inductance', None)
+            'qgd_qgs_ratio_source': 'datasheet charge values' if 'qgd_qgs_ratio' in locals() and qgd_qgs_ratio is not None else 'not available in current component data',
+            'package_inductance_nH': getattr(mosfet, 'package_inductance', None),
+            'package_inductance_source': 'datasheet/package information' if getattr(mosfet, 'package_inductance', None) not in (None, 0) else 'not available in current component data'
         }
 
         suggestions.append(ComponentSuggestion(
