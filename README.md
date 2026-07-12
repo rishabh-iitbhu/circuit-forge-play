@@ -18,6 +18,7 @@ A sophisticated **Streamlit-based** web application for power electronics circui
 - **Implemented:** MOSFETs now pass a drain-current filter of $1.2 \times I_{out,max}$ before they are considered further.
 - **Comparative risk assessment:** The reasoning now highlights DC SOA, pulsed SOA, avalanche energy, repetitive avalanche, RDS(on) at the elevated-temperature basis, Qgd/Qgs ratio, and package inductance.
 - **Reasoning UI:** Each candidate now shows its filter journey and a concise “why this was recommended” summary so developers can trace the final selection decision.
+- **Gate-charge and package-inductance wording:** The UI now explicitly reports the gate-to-drain-charge to gate-to-source-charge ratio and the package inductance, with a clear note that these values should be sourced from datasheet/package information and calculations when not populated in the current dataset.
 
 ## 🚀 Live Demo & Deployment
 
