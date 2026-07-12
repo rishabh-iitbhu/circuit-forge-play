@@ -3,7 +3,7 @@ Component suggestion logic for recommending MOSFETs, capacitors, and inductors
 Now incorporates design heuristics from documents
 """
 
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Any
 from dataclasses import dataclass
 from lib.component_data import (
     MOSFET, Capacitor, Inductor, InputCapacitor,
@@ -136,7 +136,7 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
     default_sic_rating_factor = 0.7
     extracted_vds_rating_guidelines: List[str] = []
     overshoot_guidance_lines: List[str] = []
-    current_margin = 1.3  # default 30% ID margin when heuristics absent
+    current_margin = 1.2  # default 20% ID margin when heuristics absent (per updated request)
     
     # Analyze heuristics for VDS rating or overshoot guidance
     if heuristics_analysis and heuristics_analysis['selection_criteria']:
@@ -203,9 +203,51 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         if mosfet.id < computed_rms_current * current_margin:
             continue
         
+        # After basic VDS and ID gating, perform comparative risk-assessment checks
         # Calculate suitability score with NEW heuristics
         score = 100.0
         component_heuristics = applied_heuristics.copy()
+
+        # --- SOA & Avalanche information checks (comparative risk assessment) ---
+        # Check presence of DC SOA, pulsed SOA, and avalanche energy ratings. Prefer
+        # devices that document DC SOA and avalanche capability.
+        dc_soa = getattr(mosfet, 'dc_soa', None) or getattr(mosfet, 'soa_dc', None)
+        pulsed_soa = getattr(mosfet, 'pulsed_soa', None) or getattr(mosfet, 'soa_pulsed', None)
+        avalanche_energy = (
+            getattr(mosfet, 'eas', None)
+            or getattr(mosfet, 'eav', None)
+            or getattr(mosfet, 'avalanche_energy', None)
+        )
+        repetitive_avalanche = getattr(mosfet, 'repetitive_avalanche', None) or getattr(mosfet, 'repetitive_avalanche_energy', None)
+
+        if dc_soa:
+            score += 8
+            component_heuristics.append("✅ DC SOA documented")
+        else:
+            score -= 4
+            component_heuristics.append("⚠️ No DC SOA documented")
+
+        if pulsed_soa:
+            score += 5
+            component_heuristics.append("📈 Pulsed SOA documented")
+        else:
+            # smaller penalty for missing pulsed SOA
+            score -= 1
+            component_heuristics.append("ℹ️ Pulsed SOA not documented")
+
+        if avalanche_energy:
+            score += 4
+            component_heuristics.append("🔋 Avalanche energy (EAS/EAV) documented")
+        else:
+            score -= 2
+            component_heuristics.append("⚠️ Avalanche energy not documented")
+
+        if repetitive_avalanche:
+            score += 3
+            component_heuristics.append("🔁 Repetitive avalanche rating documented")
+        else:
+            component_heuristics.append("ℹ️ No repetitive avalanche rating documented")
+
         
         # PRIORITY 1: VDS Headroom Assessment (grounded in vref and heuristics)
         vds_headroom_ratio = mosfet.vds / required_vds
@@ -335,7 +377,18 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
             'required_vds': required_vds,
             'vds_headroom_ratio': vds_headroom_ratio,
             'overshoot_guidance': overshoot_guidance_lines,
-            'heuristics_documents': heuristics_analysis.get('documents_found', []) if heuristics_analysis else []
+            'heuristics_documents': heuristics_analysis.get('documents_found', []) if heuristics_analysis else [],
+            # SOA / Avalanche details
+            'dc_soa_present': bool(dc_soa),
+            'pulsed_soa_present': bool(pulsed_soa),
+            'avalanche_energy_mJ': avalanche_energy,
+            'repetitive_avalanche': repetitive_avalanche,
+            # RDS(on) details
+            'rdson_used_mohm': rdson_used,
+            'rdson_at_125c_available': getattr(mosfet, 'rdson_at_125c', None) is not None and getattr(mosfet, 'rdson_at_125c', 0) > 0,
+            # dv/dt immunity details
+            'qgd_qgs_ratio': (qgd_qgs_ratio if 'qgd_qgs_ratio' in locals() else None),
+            'package_inductance_nH': getattr(mosfet, 'package_inductance', None)
         }
 
         suggestions.append(ComponentSuggestion(
