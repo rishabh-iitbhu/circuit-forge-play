@@ -430,6 +430,7 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
     else:
         st.subheader("VDS Calculation Logic and Reasoning")
         lines = []
+        lines.append("**Voltage survivability**")
         lines.append(f"- **Vin max:** {details.get('vin_max', 'N/A')} V")
         if details.get('vin_peak'):
             lines.append(f"- **Estimated Vpeak (Vin + 25% overshoot):** {details['vin_peak']:.1f} V")
@@ -448,6 +449,36 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
             lines.append("\n**Heuristic VDS overshoot guidance**")
             for guidance in details['overshoot_guidance'][:3]:
                 lines.append(f"- {guidance}")
+
+        lines.append("\n**Comparative risk assessment**")
+        dc_soa = details.get('dc_soa_present')
+        if dc_soa is not None:
+            lines.append(f"- **DC SOA documented:** {'Yes' if dc_soa else 'No'}")
+        pulsed_soa = details.get('pulsed_soa_present')
+        if pulsed_soa is not None:
+            lines.append(f"- **Pulsed SOA documented:** {'Yes' if pulsed_soa else 'No'}")
+        avalanche_energy = details.get('avalanche_energy_mJ')
+        if avalanche_energy is not None:
+            lines.append(f"- **Avalanche energy specified:** {'Yes' if avalanche_energy else 'No'}")
+        repetitive_avalanche = details.get('repetitive_avalanche')
+        if repetitive_avalanche is not None:
+            lines.append(f"- **Repetitive avalanche specified:** {'Yes' if repetitive_avalanche else 'No'}")
+
+        rdson_used = details.get('rdson_used_mohm')
+        if rdson_used is not None:
+            lines.append(f"- **RDS(on) used for comparison (100-125°C basis):** {rdson_used} mΩ")
+            lines.append("  - Lower RDS(on) is preferred because it reduces conduction loss and thermal stress.")
+
+        qgd_qgs_ratio = details.get('qgd_qgs_ratio')
+        if qgd_qgs_ratio is not None:
+            lines.append(f"- **Gate charge ratio (Qgd/Qgs):** {qgd_qgs_ratio:.2f}")
+            lines.append("  - Lower values are preferred because they are less susceptible to induced turn-on through Cgd.")
+
+        package_inductance = details.get('package_inductance_nH')
+        if package_inductance not in (None, 0):
+            lines.append(f"- **Package inductance:** {package_inductance} nH")
+            lines.append("  - Lower package inductance is preferred because it reduces switching-node ringing and dv/dt susceptibility.")
+
         st.markdown("\n".join(lines))
         if st.button("Hide VDS calculation logic", key=f"hide_{vds_toggle_key}"):
             st.session_state[vds_toggle_key] = False
