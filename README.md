@@ -12,7 +12,12 @@ A sophisticated **Streamlit-based** web application for power electronics circui
 - **📊 Interactive Interface** - Clean, professional Streamlit UI with real-time calculations
 - **☁️ Cloud Ready** - Optimized for Streamlit Cloud deployment
 
+## 🛠️ Recent MOSFET Selection Logic Update
 
+- **Updated:** 2026-07-12
+- **Implemented:** MOSFETs now pass a drain-current filter of $1.2 \times I_{out,max}$ before they are considered further.
+- **Comparative risk assessment:** The reasoning now highlights DC SOA, pulsed SOA, avalanche energy, repetitive avalanche, RDS(on) at the elevated-temperature basis, Qgd/Qgs ratio, and package inductance.
+- **Reasoning UI:** Each candidate now shows its filter journey and a concise “why this was recommended” summary so developers can trace the final selection decision.
 
 ## 🚀 Live Demo & Deployment
 

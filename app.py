@@ -30,7 +30,9 @@ To trigger deployment:
 Last deployment: 2026-03-29 11:25:08 (deployment automation setup)
 """
 
-import os, subprocess, streamlit as st
+import os, subprocess
+from datetime import datetime
+import streamlit as st
 
 # Try to read the current git commit. First attempt using the `git` CLI,
 # then fall back to reading the .git/HEAD file if the executable is not
@@ -69,10 +71,13 @@ def get_git_commit() -> str | None:
 
 
 git_commit = get_git_commit()
-if git_commit:
-    st.write("Git commit:", git_commit)
-else:
-    st.write("Could not read git commit: 'git' not available and no .git/HEAD found")
+last_updated = datetime.now().strftime("%Y-%m-%d %H:%M")
+st.info(
+    "🛠️ Developer change tracker\n"
+    f"- Last updated: {last_updated}\n"
+    f"- Git commit: {git_commit or 'Unavailable'}\n"
+    "- Implemented: MOSFET ID filter at 1.2×Ioutmax, SOA/avalanche checks, RDS(on) comparison, Qgd/Qgs and package-inductance review, plus a visible filter-journey and recommendation summary in the MOSFET reasoning UI."
+)
 
 from lib.llm_assistant import LLMAgent
 
