@@ -419,16 +419,16 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
     comp = suggestion.component
     details = suggestion.selection_details or {}
     
-    st.write("**VDS Section**")
+    st.write("**MOSFET Selection Logic**")
 
     part_key = getattr(comp, 'part_number', getattr(comp, 'name', 'MOSFET')).replace(' ', '_').replace('/', '_')
     vds_toggle_key = f"show_vds_calc_{part_key}"
 
     if not st.session_state.get(vds_toggle_key, False):
-        if st.button("Show VDS calculation logic", key=vds_toggle_key):
+        if st.button("Show MOSFET selection logic", key=vds_toggle_key):
             st.session_state[vds_toggle_key] = True
     else:
-        st.subheader("VDS Calculation Logic and Reasoning")
+        st.subheader("MOSFET Selection Logic and Reasoning")
         lines = []
         lines.append("**Voltage survivability**")
         lines.append(f"- **Vin max:** {details.get('vin_max', 'N/A')} V")
@@ -498,7 +498,7 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
             lines.append(f"- {recommendation_reason}")
 
         st.markdown("\n".join(lines))
-        if st.button("Hide VDS calculation logic", key=f"hide_{vds_toggle_key}"):
+        if st.button("Hide MOSFET selection logic", key=f"hide_{vds_toggle_key}"):
             st.session_state[vds_toggle_key] = False
 
 
