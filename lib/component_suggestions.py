@@ -200,7 +200,9 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         # Check current requirement with margin (compare against computed RMS/current requirement).
         # We treat `max_current` as the user's computed RMS current requirement for selection.
         computed_rms_current = max_current
-        if mosfet.id < computed_rms_current * current_margin:
+        id_filter_threshold_a = computed_rms_current * current_margin
+        id_filter_passed = mosfet.id >= id_filter_threshold_a
+        if not id_filter_passed:
             continue
         
         # After basic VDS and ID gating, perform comparative risk-assessment checks
@@ -352,21 +354,62 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
                 score += 5
                 component_heuristics.append("Documented high efficiency range")
         
-        # Build a focused candidate rationale centered on VDS validity
+        selection_journey = [
+            f"Passed VDS survivability filter: VDS {mosfet.vds:.0f}V >= required {required_vds:.1f}V",
+            f"Passed drain-current filter: ID {mosfet.id:.1f}A >= {id_filter_threshold_a:.1f}A (1.2 × Ioutmax)",
+        ]
+
+        if dc_soa:
+            selection_journey.append("Documented DC SOA")
+        else:
+            selection_journey.append("No DC SOA documentation")
+
+        if pulsed_soa:
+            selection_journey.append("Documented pulsed SOA")
+        else:
+            selection_journey.append("No pulsed SOA documentation")
+
+        if avalanche_energy:
+            selection_journey.append("Avalanche energy specified")
+        else:
+            selection_journey.append("Avalanche energy not specified")
+
+        if repetitive_avalanche:
+            selection_journey.append("Repetitive avalanche specified")
+
+        recommendation_parts = []
+        if vds_headroom_ratio >= 1.5:
+            recommendation_parts.append(f"strong VDS headroom ({vds_headroom_ratio:.2f}x)")
+        if rdson_used is not None and rdson_used < 20:
+            recommendation_parts.append(f"low RDS(on) of {rdson_used}mΩ")
+        elif rdson_used is not None:
+            recommendation_parts.append(f"manageable RDS(on) of {rdson_used}mΩ")
+        if 'qgd_qgs_ratio' in locals() and qgd_qgs_ratio is not None and qgd_qgs_ratio < 0.8:
+            recommendation_parts.append("favorable Qgd/Qgs ratio for dv/dt immunity")
+        if hasattr(mosfet, 'package_inductance') and mosfet.package_inductance not in (None, 0) and mosfet.package_inductance < 2:
+            recommendation_parts.append("low package inductance")
+        if not recommendation_parts:
+            recommendation_parts.append("it met the primary VDS and ID filters")
+
+        recommendation_reason = (
+            "Recommended because it passed the primary VDS and ID filters and scored well on "
+            + ", ".join(recommendation_parts) + "."
+        )
+
+        # Build a focused candidate rationale centered on VDS validity and the new filter journey
         reason = (
-            f"Valid candidate because VDS={mosfet.vds}V exceeds the required VDS of {required_vds:.1f}V, "
-            f"based on Vpeak={vin_peak:.1f}V (25% conservative overshoot estimate) "
-            f"and a standard conservative VDS rating factor of {rating_factor:.2f}. "
+            f"Filter journey: {'; '.join(selection_journey)}. "
+            f"Final recommendation: {recommendation_reason}"
         )
 
         if heuristics_analysis and heuristics_analysis['selection_criteria']:
-            reason += "This selection follows the updated MOSFET heuristics document for safe VDS rating and overshoot protection. "
+            reason += " This selection follows the updated MOSFET heuristics document for safe VDS rating and overshoot protection."
 
         if rdson_report:
-            reason += f"The device also meets conduction loss guidance with RDS(on)={rdson_report}mΩ. "
+            reason += f" The device also meets conduction loss guidance with RDS(on)={rdson_report}mΩ."
 
         reason += (
-            "ID and thermal margins were checked, but the primary candidate decision in this view is driven by documented VDS survivability criteria."
+            " ID and thermal margins were checked, but the primary candidate decision in this view is driven by documented VDS survivability criteria."
         )
         
         selection_details = {
@@ -378,6 +421,11 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
             'vds_headroom_ratio': vds_headroom_ratio,
             'overshoot_guidance': overshoot_guidance_lines,
             'heuristics_documents': heuristics_analysis.get('documents_found', []) if heuristics_analysis else [],
+            # Current filter details
+            'id_filter_threshold_a': id_filter_threshold_a,
+            'id_filter_passed': id_filter_passed,
+            'selection_journey': selection_journey,
+            'recommendation_reason': recommendation_reason,
             # SOA / Avalanche details
             'dc_soa_present': bool(dc_soa),
             'pulsed_soa_present': bool(pulsed_soa),
@@ -385,6 +433,7 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
             'repetitive_avalanche': repetitive_avalanche,
             # RDS(on) details
             'rdson_used_mohm': rdson_used,
+            'rdson_actual_mohm': getattr(mosfet, 'rdson', None),
             'rdson_at_125c_available': getattr(mosfet, 'rdson_at_125c', None) is not None and getattr(mosfet, 'rdson_at_125c', 0) > 0,
             # dv/dt immunity details
             'qgd_qgs_ratio': (qgd_qgs_ratio if 'qgd_qgs_ratio' in locals() else None),

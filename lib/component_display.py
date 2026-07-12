@@ -450,6 +450,16 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
             for guidance in details['overshoot_guidance'][:3]:
                 lines.append(f"- {guidance}")
 
+        lines.append("\n**Filter journey**")
+        lines.append(f"- **Drain-current filter:** ID >= {details.get('id_filter_threshold_a', 'N/A')} A (1.2 × Ioutmax)")
+        lines.append(f"- **Current filter passed:** {'Yes' if details.get('id_filter_passed') else 'No'}")
+        journey_items = details.get('selection_journey', [])
+        if isinstance(journey_items, list):
+            for item in journey_items:
+                lines.append(f"- {item}")
+        elif journey_items:
+            lines.append(f"- {journey_items}")
+
         lines.append("\n**Comparative risk assessment**")
         dc_soa = details.get('dc_soa_present')
         if dc_soa is not None:
@@ -465,8 +475,11 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
             lines.append(f"- **Repetitive avalanche specified:** {'Yes' if repetitive_avalanche else 'No'}")
 
         rdson_used = details.get('rdson_used_mohm')
+        rdson_actual = details.get('rdson_actual_mohm')
         if rdson_used is not None:
-            lines.append(f"- **RDS(on) used for comparison (100-125°C basis):** {rdson_used} mΩ")
+            lines.append(f"- **RDS(on) value used for comparison (100-125°C basis):** {rdson_used} mΩ")
+            if rdson_actual is not None:
+                lines.append(f"- **Actual listed RDS(on):** {rdson_actual} mΩ")
             lines.append("  - Lower RDS(on) is preferred because it reduces conduction loss and thermal stress.")
 
         qgd_qgs_ratio = details.get('qgd_qgs_ratio')
@@ -478,6 +491,11 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
         if package_inductance not in (None, 0):
             lines.append(f"- **Package inductance:** {package_inductance} nH")
             lines.append("  - Lower package inductance is preferred because it reduces switching-node ringing and dv/dt susceptibility.")
+
+        recommendation_reason = details.get('recommendation_reason')
+        if recommendation_reason:
+            lines.append("\n**Why this was recommended**")
+            lines.append(f"- {recommendation_reason}")
 
         st.markdown("\n".join(lines))
         if st.button("Hide VDS calculation logic", key=f"hide_{vds_toggle_key}"):
