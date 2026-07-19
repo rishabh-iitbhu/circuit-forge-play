@@ -320,20 +320,20 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         gm_value = getattr(mosfet, 'gm', None) or getattr(mosfet, 'transconductance', None)
         if qgd_value_nC is not None:
             gate_drive_sensitivity_note = (
-                f"Qgd (gate-drain charge) was found to be {qgd_value_nC:.2f} nC at the selected operating point. Lower Qgd reduces gate-drive energy and switching loss at {frequency_hz:.0f} Hz, but it also tends to increase dv/dt and EMI and makes the gate loop more sensitive to layout, ringing, VGS overshoot/undershoot, and false turn-on."
+                f"Lower Qgd reduces gate-drive energy and switching loss at {frequency_hz:.0f} Hz, but it also tends to increase dv/dt and EMI and makes the gate loop more sensitive to layout, ringing, VGS overshoot/undershoot, and false turn-on."
             )
         else:
             gate_drive_sensitivity_note = (
-                "Qgd (gate-drain charge) was not available in the current component data, so the gate-drive energy and dv/dt tradeoff should be checked directly from the datasheet and layout considerations."
+                "Gate-drive energy and dv/dt tradeoffs should be checked directly from the datasheet and layout considerations because Qgd data is not available."
             )
 
         if gm_value is not None:
             gm_sensitivity_note = (
-                f"Transconductance (gm) was found to be {gm_value:.2f}; higher gm can make the part more sensitive to gate-voltage ringing and VGS overshoot/undershoot, so it should be compared against other candidates and checked against the gate-drive network."
+                "Higher gm can make the part more sensitive to gate-voltage ringing and VGS overshoot/undershoot, so it should be compared against other candidates and checked against the gate-drive network."
             )
         else:
             gm_sensitivity_note = (
-                "Transconductance (gm) was not available in the current component data; when it is available from the datasheet, it should be compared against other candidates because higher gm can increase sensitivity to gate ringing and VGS stress."
+                "GM data is not available, so the sensitivity to gate ringing and VGS stress should be verified from the datasheet and compared against other candidates."
             )
         
         if hasattr(mosfet, 'package_inductance') and mosfet.package_inductance is not None:

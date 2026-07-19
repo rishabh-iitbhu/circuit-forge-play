@@ -483,32 +483,25 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
             lines.append("  - Lower RDS(on) is preferred because it reduces conduction loss and thermal stress.")
 
         qgd_value_nC = details.get('qgd_value_nC')
-        if qgd_value_nC is not None:
-            lines.append(f"- **Qgd (gate-drain charge):** {qgd_value_nC:.2f} nC")
-        else:
-            lines.append("- **Qgd (gate-drain charge):** not available in the current component data; it should be sourced from the datasheet values and calculations.")
-
         qgd_qgs_ratio = details.get('qgd_qgs_ratio')
-        if qgd_qgs_ratio is not None:
-            lines.append(f"- **Qgd/Qgs ratio:** {qgd_qgs_ratio:.2f}")
-            lines.append(f"  - Source: {details.get('qgd_qgs_ratio_source', 'datasheet charge values')}.")
-            lines.append("  - Lower values are preferred because they are less susceptible to induced turn-on through Cgd.")
-        else:
-            lines.append("- **Qgd/Qgs ratio:** not available in the current component data; it should be sourced from the datasheet values and calculations.")
-
         gate_drive_sensitivity_note = details.get('gate_drive_sensitivity_note')
-        if gate_drive_sensitivity_note:
-            lines.append(f"- **Gate-drive and switching-loss note:** {gate_drive_sensitivity_note}")
+        if qgd_value_nC is not None and qgd_qgs_ratio is not None:
+            qgd_text = f"Qgd = {qgd_value_nC:.2f} nC and Qgd/Qgs = {qgd_qgs_ratio:.2f}; {gate_drive_sensitivity_note}"
+        elif qgd_value_nC is not None:
+            qgd_text = f"Qgd = {qgd_value_nC:.2f} nC; {gate_drive_sensitivity_note}"
+        elif qgd_qgs_ratio is not None:
+            qgd_text = f"Qgd/Qgs = {qgd_qgs_ratio:.2f}; {gate_drive_sensitivity_note}"
+        else:
+            qgd_text = f"Qgd/Qgs values are not available in the current component data; {gate_drive_sensitivity_note}"
+        lines.append(f"- **Gate-drive / dv/dt logic:** {qgd_text}")
 
         gm_value = details.get('gm_value')
-        if gm_value is not None:
-            lines.append(f"- **Transconductance (gm):** {gm_value:.2f}")
-        else:
-            lines.append("- **Transconductance (gm):** not available in the current component data; it should be sourced from the datasheet values and calculations.")
-
         gm_sensitivity_note = details.get('gm_sensitivity_note')
-        if gm_sensitivity_note:
-            lines.append(f"- **gm sensitivity note:** {gm_sensitivity_note}")
+        if gm_value is not None:
+            gm_text = f"gm = {gm_value:.2f}; {gm_sensitivity_note}"
+        else:
+            gm_text = f"gm is not available in the current component data; {gm_sensitivity_note}"
+        lines.append(f"- **Transconductance / gm logic:** {gm_text}")
 
         package_inductance = details.get('package_inductance_nH')
         if package_inductance not in (None, 0):
