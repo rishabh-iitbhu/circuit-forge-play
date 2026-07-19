@@ -4,8 +4,8 @@ This folder contains design heuristics documents for various electronic componen
 
 ## Folder Structure:
 - `capacitors/` - Design guidelines and selection criteria for capacitors
-- `inductors/` - Design guidelines and selection criteria for inductors  
-- `mosfets/` - Design guidelines and selection criteria for MOSFETs
+- `inductors/` - Design guidelines and selection criteria for inductors
+- `mosfets/` - Design guidelines and selection criteria for MOSFETs, including VDS, current, SOA, RDS(on), Qgd/Qgs, package inductance, gate-drive sensitivity, gm sensitivity, and reverse-recovery heuristics
 
 ## Supported File Formats:
 - `.docx` - Microsoft Word documents
@@ -20,6 +20,7 @@ Place your design heuristics documents in the appropriate subfolder. The AI agen
 - Include version numbers or dates in filenames when applicable
 - Organize content with clear headings and sections
 - Include parameter ranges, selection criteria, and design trade-offs
+- Keep MOSFET guidance aligned with the implemented logic for VDS survival, current margin, SOA, avalanche, RDS(on), gate-charge behavior, package inductance, and reverse-recovery behavior
 
 ## Examples:
 - `capacitors/mlcc_selection_guidelines_v2.docx`
