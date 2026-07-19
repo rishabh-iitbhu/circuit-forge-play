@@ -302,8 +302,12 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         # Low Qgd/Qgs ratio and low package inductance are better. Only use these
         # parameters when they exist in the database; avoid extrapolating values.
         gate_charge_quality = 0
-        if hasattr(mosfet, 'qgd') and hasattr(mosfet, 'qgs') and mosfet.qgs > 0:
-            qgd_qgs_ratio = mosfet.qgd / mosfet.qgs
+        qgd_qgs_ratio = None
+        qgd_value_nC = None
+        if hasattr(mosfet, 'qgd') and getattr(mosfet, 'qgd', None) not in (None, 0):
+            qgd_value_nC = float(getattr(mosfet, 'qgd', 0))
+        if hasattr(mosfet, 'qgd') and hasattr(mosfet, 'qgs') and getattr(mosfet, 'qgs', 0) > 0:
+            qgd_qgs_ratio = getattr(mosfet, 'qgd', 0) / getattr(mosfet, 'qgs', 1)
             if qgd_qgs_ratio < 0.5:  # Low ratio = better dv/dt immunity
                 score += 8
                 component_heuristics.append(f"Excellent dv/dt immunity (Qgd/Qgs={qgd_qgs_ratio:.2f})")
@@ -312,6 +316,25 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
                 score += 4
                 component_heuristics.append(f"Good dv/dt immunity (Qgd/Qgs={qgd_qgs_ratio:.2f})")
                 gate_charge_quality = 1
+
+        gm_value = getattr(mosfet, 'gm', None) or getattr(mosfet, 'transconductance', None)
+        if qgd_value_nC is not None:
+            gate_drive_sensitivity_note = (
+                f"Qgd (gate-drain charge) was found to be {qgd_value_nC:.2f} nC at the selected operating point. Lower Qgd reduces gate-drive energy and switching loss at {frequency_hz:.0f} Hz, but it also tends to increase dv/dt and EMI and makes the gate loop more sensitive to layout, ringing, VGS overshoot/undershoot, and false turn-on."
+            )
+        else:
+            gate_drive_sensitivity_note = (
+                "Qgd (gate-drain charge) was not available in the current component data, so the gate-drive energy and dv/dt tradeoff should be checked directly from the datasheet and layout considerations."
+            )
+
+        if gm_value is not None:
+            gm_sensitivity_note = (
+                f"Transconductance (gm) was found to be {gm_value:.2f}; higher gm can make the part more sensitive to gate-voltage ringing and VGS overshoot/undershoot, so it should be compared against other candidates and checked against the gate-drive network."
+            )
+        else:
+            gm_sensitivity_note = (
+                "Transconductance (gm) was not available in the current component data; when it is available from the datasheet, it should be compared against other candidates because higher gm can increase sensitivity to gate ringing and VGS stress."
+            )
         
         if hasattr(mosfet, 'package_inductance') and mosfet.package_inductance is not None:
             if mosfet.package_inductance < 2:  # nH, lower is better
@@ -401,6 +424,8 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
             f"Filter journey: {'; '.join(selection_journey)}. "
             f"Final recommendation: {recommendation_reason}"
         )
+        reason += f" {gate_drive_sensitivity_note}"
+        reason += f" {gm_sensitivity_note}"
 
         if heuristics_analysis and heuristics_analysis['selection_criteria']:
             reason += " This selection follows the updated MOSFET heuristics document for safe VDS rating and overshoot protection."
@@ -436,8 +461,12 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
             'rdson_actual_mohm': getattr(mosfet, 'rdson', None),
             'rdson_at_125c_available': getattr(mosfet, 'rdson_at_125c', None) is not None and getattr(mosfet, 'rdson_at_125c', 0) > 0,
             # dv/dt immunity details
+            'qgd_value_nC': qgd_value_nC,
             'qgd_qgs_ratio': (qgd_qgs_ratio if 'qgd_qgs_ratio' in locals() else None),
             'qgd_qgs_ratio_source': 'datasheet charge values' if 'qgd_qgs_ratio' in locals() and qgd_qgs_ratio is not None else 'not available in current component data',
+            'gm_value': gm_value,
+            'gate_drive_sensitivity_note': gate_drive_sensitivity_note,
+            'gm_sensitivity_note': gm_sensitivity_note,
             'package_inductance_nH': getattr(mosfet, 'package_inductance', None),
             'package_inductance_source': 'datasheet/package information' if getattr(mosfet, 'package_inductance', None) not in (None, 0) else 'not available in current component data'
         }
