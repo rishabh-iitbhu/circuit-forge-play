@@ -335,6 +335,41 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
             gm_sensitivity_note = (
                 "GM data is not available, so the sensitivity to gate ringing and VGS stress should be verified from the datasheet and compared against other candidates."
             )
+
+        qrr_value = getattr(mosfet, 'qrr', None)
+        irr_value = getattr(mosfet, 'irr', None)
+        trr_value = getattr(mosfet, 'trr', None)
+        recovery_product = None
+        if qrr_value is not None and qrr_value > 0:
+            recovery_product = float(qrr_value)
+        elif irr_value is not None and trr_value is not None and irr_value > 0 and trr_value > 0:
+            recovery_product = float(irr_value * trr_value)
+
+        if recovery_product is not None:
+            if recovery_product < 50:
+                score += 4
+                component_heuristics.append(f"Low reverse-recovery stress ({recovery_product:.1f})")
+            elif recovery_product < 150:
+                score += 2
+                component_heuristics.append(f"Moderate reverse-recovery stress ({recovery_product:.1f})")
+            else:
+                score -= 3
+                component_heuristics.append(f"High reverse-recovery stress ({recovery_product:.1f})")
+        else:
+            component_heuristics.append("Reverse-recovery data not available")
+
+        if qrr_value is not None and qrr_value > 0:
+            reverse_recovery_note = (
+                f"Qrr = {qrr_value:.2f}; lower Qrr reduces body-diode recovery loss and EMI, but higher temperature and higher forward current during commutation increase Qrr, so this should be checked at the operating point. Slowing the rise of the opposite gate-drive pulse can reduce reverse-recovery current."
+            )
+        elif irr_value is not None and trr_value is not None and irr_value > 0 and trr_value > 0:
+            reverse_recovery_note = (
+                f"Irr = {irr_value:.2f} A and trr = {trr_value:.2f} ns (Irr × trr ≈ {recovery_product:.2f}); lower recovery current/time reduces ringing and loss, while higher junction temperature and forward current increase recovery stress. Slowing the rise of the opposite gate-drive pulse can reduce reverse-recovery current."
+            )
+        else:
+            reverse_recovery_note = (
+                "Qrr/Irr/trr values are not available in the current component data; this should be sourced from the datasheet because body-diode recovery can increase switching loss and EMI."
+            )
         
         if hasattr(mosfet, 'package_inductance') and mosfet.package_inductance is not None:
             if mosfet.package_inductance < 2:  # nH, lower is better
@@ -426,6 +461,7 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         )
         reason += f" {gate_drive_sensitivity_note}"
         reason += f" {gm_sensitivity_note}"
+        reason += f" {reverse_recovery_note}"
 
         if heuristics_analysis and heuristics_analysis['selection_criteria']:
             reason += " This selection follows the updated MOSFET heuristics document for safe VDS rating and overshoot protection."
@@ -467,6 +503,11 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
             'gm_value': gm_value,
             'gate_drive_sensitivity_note': gate_drive_sensitivity_note,
             'gm_sensitivity_note': gm_sensitivity_note,
+            'qrr_value': qrr_value,
+            'irr_value': irr_value,
+            'trr_value': trr_value,
+            'recovery_product': recovery_product,
+            'reverse_recovery_note': reverse_recovery_note,
             'package_inductance_nH': getattr(mosfet, 'package_inductance', None),
             'package_inductance_source': 'datasheet/package information' if getattr(mosfet, 'package_inductance', None) not in (None, 0) else 'not available in current component data'
         }
