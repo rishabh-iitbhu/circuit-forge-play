@@ -28,4 +28,9 @@ This folder contains design guidelines and selection criteria for MOSFETs in pow
 - `thermal_design_considerations.docx`
 - `gate_drive_design_rules.txt`
 
+## Current Selection Logic Captured for the Agent
+- The agent applies a drain-current filter using $1.2 \times I_{out,max}$.
+- The agent then performs comparative risk assessment for DC SOA, pulsed SOA, avalanche energy, repetitive avalanche, RDS(on) at an elevated-temperature basis, Qgd/Qgs ratio, and package inductance.
+- The reasoning output explicitly states the filter journey and the final recommendation reason, including the gate-to-drain-charge / gate-to-source-charge ratio and the package inductance when those values are available from datasheet/package information and calculations.
+
 Place your design heuristics documents in this folder for AI-powered component recommendations.

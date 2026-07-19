@@ -26,6 +26,257 @@ class ComponentSuggestion:
             self.selection_details = {}
 
 
+def evaluate_mosfet_candidate(
+    mosfet: MOSFET,
+    max_voltage: float,
+    max_current: float,
+    frequency_hz: float = 65000,
+    heuristics_analysis: Dict[str, Any] | None = None,
+    applied_heuristics: List[str] | None = None,
+    overshoot_multiplier: float = 1.25,
+    current_margin: float = 1.2,
+    default_silicon_rating_factor: float = 0.6,
+    default_sic_rating_factor: float = 0.7,
+    extracted_vds_rating_guidelines: List[str] | None = None,
+    overshoot_guidance_lines: List[str] | None = None,
+) -> Dict[str, Any] | None:
+    """Evaluate a single MOSFET against the updated selection logic."""
+    applied_heuristics = applied_heuristics or []
+    extracted_vds_rating_guidelines = extracted_vds_rating_guidelines or []
+    overshoot_guidance_lines = overshoot_guidance_lines or []
+
+    mosfet_type = getattr(mosfet, 'mosfet_type', 'Si')
+    rating_factor = default_silicon_rating_factor if mosfet_type.lower() == 'si' else default_sic_rating_factor
+    rating_factor_source = f"default {mosfet_type} rating factor"
+    for guideline in extracted_vds_rating_guidelines:
+        if '0.6' in guideline:
+            rating_factor = 0.6
+            rating_factor_source = "heuristics VDS rating factor"
+            break
+        elif '0.7' in guideline and mosfet_type.lower() == 'sic':
+            rating_factor = 0.7
+            rating_factor_source = "heuristics VDS rating factor"
+            break
+        elif '0.8' in guideline and mosfet_type.lower() == 'sic':
+            rating_factor = 0.8
+            rating_factor_source = "heuristics VDS rating factor"
+            break
+        elif '0.7' in guideline:
+            rating_factor = 0.7
+            rating_factor_source = "heuristics VDS rating factor"
+            break
+
+    vin_max = max_voltage
+    vin_peak = vin_max * overshoot_multiplier
+    required_vds = vin_peak / rating_factor
+    if getattr(mosfet, 'vds', 0) < required_vds:
+        return None
+
+    computed_rms_current = max_current
+    id_filter_threshold_a = computed_rms_current * current_margin
+    id_filter_passed = getattr(mosfet, 'id', 0) >= id_filter_threshold_a
+    if not id_filter_passed:
+        return None
+
+    score = 100.0
+    component_heuristics = list(applied_heuristics)
+
+    dc_soa = getattr(mosfet, 'dc_soa', None) or getattr(mosfet, 'soa_dc', None)
+    pulsed_soa = getattr(mosfet, 'pulsed_soa', None) or getattr(mosfet, 'soa_pulsed', None)
+    avalanche_energy = (
+        getattr(mosfet, 'eas', None)
+        or getattr(mosfet, 'eav', None)
+        or getattr(mosfet, 'avalanche_energy', None)
+    )
+    repetitive_avalanche = getattr(mosfet, 'repetitive_avalanche', None) or getattr(mosfet, 'repetitive_avalanche_energy', None)
+
+    if dc_soa:
+        score += 8
+        component_heuristics.append("✅ DC SOA documented")
+    else:
+        score -= 4
+        component_heuristics.append("⚠️ No DC SOA documented")
+
+    if pulsed_soa:
+        score += 5
+        component_heuristics.append("📈 Pulsed SOA documented")
+    else:
+        score -= 1
+        component_heuristics.append("ℹ️ Pulsed SOA not documented")
+
+    if avalanche_energy:
+        score += 4
+        component_heuristics.append("🔋 Avalanche energy (EAS/EAV) documented")
+    else:
+        score -= 2
+        component_heuristics.append("⚠️ Avalanche energy not documented")
+
+    if repetitive_avalanche:
+        score += 3
+        component_heuristics.append("🔁 Repetitive avalanche rating documented")
+    else:
+        component_heuristics.append("ℹ️ No repetitive avalanche rating documented")
+
+    vds_headroom_ratio = getattr(mosfet, 'vds', 0) / required_vds
+    if vds_headroom_ratio >= 2.0:
+        score += 15
+        component_heuristics.append("Excellent VDS headroom")
+    elif vds_headroom_ratio >= 1.5:
+        score += 10
+        component_heuristics.append("Good VDS headroom")
+    elif vds_headroom_ratio >= 1.25:
+        score += 5
+        component_heuristics.append("Minimum acceptable VDS headroom")
+    else:
+        score -= 10
+        component_heuristics.append("Insufficient VDS headroom")
+
+    rdson_used = getattr(mosfet, 'rdson_at_125c', None) or getattr(mosfet, 'rdson', None)
+    rdson_report = rdson_used
+    if rdson_used and rdson_used < 20:
+        score += 10
+        component_heuristics.append("Low RDS(on) at elevated temp")
+    elif rdson_used and rdson_used < 50:
+        score += 5
+        component_heuristics.append("Moderate RDS(on) at elevated temp")
+    elif rdson_used:
+        score -= (rdson_used - 50) / 5
+        component_heuristics.append(f"Higher RDS(on) at temperature: {rdson_used}mΩ")
+
+    rdson_penalty = 0.0
+    if frequency_hz > 100000 and hasattr(mosfet, 'rdson') and mosfet.rdson is not None:
+        rdson_penalty = mosfet.rdson * 0.1
+        score -= rdson_penalty
+        component_heuristics.append(f"🔄 High-freq loss penalty ({rdson_penalty:.1f}pts)")
+
+    if hasattr(mosfet, 'vgs_max') and mosfet.vgs_max:
+        if mosfet.vgs_max >= 12:
+            score += 3
+            component_heuristics.append("Documented VGS limit supports common gate drives")
+
+    qgd_qgs_ratio = None
+    if hasattr(mosfet, 'qgd') and hasattr(mosfet, 'qgs') and getattr(mosfet, 'qgs', 0) > 0:
+        qgd_qgs_ratio = getattr(mosfet, 'qgd', 0) / getattr(mosfet, 'qgs', 1)
+        if qgd_qgs_ratio < 0.5:
+            score += 8
+            component_heuristics.append(f"Excellent dv/dt immunity (Qgd/Qgs={qgd_qgs_ratio:.2f})")
+        elif qgd_qgs_ratio < 0.8:
+            score += 4
+            component_heuristics.append(f"Good dv/dt immunity (Qgd/Qgs={qgd_qgs_ratio:.2f})")
+
+    if hasattr(mosfet, 'package_inductance') and mosfet.package_inductance is not None:
+        if mosfet.package_inductance < 2:
+            score += 5
+            component_heuristics.append(f"Low package inductance ({mosfet.package_inductance}nH)")
+        elif mosfet.package_inductance > 5:
+            score -= 3
+            component_heuristics.append(f"Higher package inductance ({mosfet.package_inductance}nH)")
+
+    current_ratio = getattr(mosfet, 'id', 0) / (max_current * current_margin)
+    if 1.5 <= current_ratio <= 3.0:
+        score += 5
+        component_heuristics.append(f"SOA margin: {current_ratio:.1f}x")
+    elif current_ratio > 3.0:
+        score -= (current_ratio - 3.0) * 2
+        component_heuristics.append(f"Large ID margin: {current_ratio:.1f}x (may be overdimensioned)")
+
+    voltage_ratio = getattr(mosfet, 'vds', 0) / required_vds
+    if 1.2 <= voltage_ratio <= 2.0:
+        score += 5
+        component_heuristics.append("Good VDS utilization relative to required threshold")
+
+    if hasattr(mosfet, 'qg') and mosfet.qg and frequency_hz > 50000:
+        if mosfet.qg < 30:
+            score += 8
+            component_heuristics.append("Low gate charge for high frequency")
+        elif mosfet.qg > 60:
+            score -= 5
+            component_heuristics.append("High gate charge penalty")
+
+    if hasattr(mosfet, 'efficiency_range') and mosfet.efficiency_range:
+        if '98%' in mosfet.efficiency_range or '97%' in mosfet.efficiency_range:
+            score += 5
+            component_heuristics.append("Documented high efficiency range")
+
+    selection_journey = [
+        f"Passed VDS survivability filter: VDS {getattr(mosfet, 'vds', 0):.0f}V >= required {required_vds:.1f}V",
+        f"Passed drain-current filter: ID {getattr(mosfet, 'id', 0):.1f}A >= {id_filter_threshold_a:.1f}A (1.2 × Ioutmax)",
+    ]
+    if dc_soa:
+        selection_journey.append("Documented DC SOA")
+    else:
+        selection_journey.append("No DC SOA documentation")
+    if pulsed_soa:
+        selection_journey.append("Documented pulsed SOA")
+    else:
+        selection_journey.append("No pulsed SOA documentation")
+    if avalanche_energy:
+        selection_journey.append("Avalanche energy specified")
+    else:
+        selection_journey.append("Avalanche energy not specified")
+    if repetitive_avalanche:
+        selection_journey.append("Repetitive avalanche specified")
+
+    recommendation_parts = []
+    if vds_headroom_ratio >= 1.5:
+        recommendation_parts.append(f"strong VDS headroom ({vds_headroom_ratio:.2f}x)")
+    if rdson_used is not None and rdson_used < 20:
+        recommendation_parts.append(f"low RDS(on) of {rdson_used}mΩ")
+    elif rdson_used is not None:
+        recommendation_parts.append(f"manageable RDS(on) of {rdson_used}mΩ")
+    if qgd_qgs_ratio is not None and qgd_qgs_ratio < 0.8:
+        recommendation_parts.append("favorable Qgd/Qgs ratio for dv/dt immunity")
+    if hasattr(mosfet, 'package_inductance') and getattr(mosfet, 'package_inductance', None) not in (None, 0) and mosfet.package_inductance < 2:
+        recommendation_parts.append("low package inductance")
+    if not recommendation_parts:
+        recommendation_parts.append("it met the primary VDS and ID filters")
+
+    recommendation_reason = (
+        "Recommended because it passed the primary VDS and ID filters and scored well on "
+        + ", ".join(recommendation_parts) + "."
+    )
+
+    reason = (
+        f"Filter journey: {'; '.join(selection_journey)}. "
+        f"Final recommendation: {recommendation_reason}"
+    )
+
+    selection_details = {
+        'vin_max': vin_max,
+        'vin_peak': vin_peak,
+        'vds_rating_factor': rating_factor,
+        'rating_factor_source': rating_factor_source,
+        'required_vds': required_vds,
+        'vds_headroom_ratio': vds_headroom_ratio,
+        'overshoot_guidance': overshoot_guidance_lines,
+        'heuristics_documents': heuristics_analysis.get('documents_found', []) if heuristics_analysis else [],
+        'id_filter_threshold_a': id_filter_threshold_a,
+        'id_filter_passed': id_filter_passed,
+        'selection_journey': selection_journey,
+        'recommendation_reason': recommendation_reason,
+        'dc_soa_present': bool(dc_soa),
+        'pulsed_soa_present': bool(pulsed_soa),
+        'avalanche_energy_mJ': avalanche_energy,
+        'repetitive_avalanche': repetitive_avalanche,
+        'rdson_used_mohm': rdson_used,
+        'rdson_actual_mohm': getattr(mosfet, 'rdson', None),
+        'rdson_at_125c_available': getattr(mosfet, 'rdson_at_125c', None) is not None and getattr(mosfet, 'rdson_at_125c', 0) > 0,
+        'qgd_qgs_ratio': qgd_qgs_ratio,
+        'qgd_qgs_ratio_source': 'datasheet charge values' if qgd_qgs_ratio is not None else 'not available in current component data',
+        'package_inductance_nH': getattr(mosfet, 'package_inductance', None),
+        'package_inductance_source': 'datasheet/package information' if getattr(mosfet, 'package_inductance', None) not in (None, 0) else 'not available in current component data'
+    }
+
+    return {
+        'passed_filters': True,
+        'score': score,
+        'component_heuristics': component_heuristics,
+        'reason': reason,
+        'selection_details': selection_details,
+        'rdson_report': rdson_report,
+    }
+
+
 def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float = 65000, use_web_search: bool = False) -> List[ComponentSuggestion]:
     """
     Suggest MOSFETs based on voltage and current requirements
@@ -171,283 +422,29 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
                     break
     
     for mosfet in MOSFET_LIBRARY:
-        mosfet_type = getattr(mosfet, 'mosfet_type', 'Si')
-        rating_factor = default_silicon_rating_factor if mosfet_type.lower() == 'si' else default_sic_rating_factor
-        rating_factor_source = f"default {mosfet_type} rating factor"
-        for guideline in extracted_vds_rating_guidelines:
-            if '0.6' in guideline:
-                rating_factor = 0.6
-                rating_factor_source = "heuristics VDS rating factor"
-                break
-            elif '0.7' in guideline and mosfet_type.lower() == 'sic':
-                rating_factor = 0.7
-                rating_factor_source = "heuristics VDS rating factor"
-                break
-            elif '0.8' in guideline and mosfet_type.lower() == 'sic':
-                rating_factor = 0.8
-                rating_factor_source = "heuristics VDS rating factor"
-                break
-            elif '0.7' in guideline:
-                rating_factor = 0.7
-                rating_factor_source = "heuristics VDS rating factor"
-                break
-
-        vin_peak = vin_max * overshoot_multiplier
-        required_vds = vin_peak / rating_factor
-        if mosfet.vds < required_vds:
+        evaluation = evaluate_mosfet_candidate(
+            mosfet=mosfet,
+            max_voltage=vin_max,
+            max_current=max_current,
+            frequency_hz=frequency_hz,
+            heuristics_analysis=heuristics_analysis,
+            applied_heuristics=applied_heuristics,
+            overshoot_multiplier=overshoot_multiplier,
+            current_margin=current_margin,
+            default_silicon_rating_factor=default_silicon_rating_factor,
+            default_sic_rating_factor=default_sic_rating_factor,
+            extracted_vds_rating_guidelines=extracted_vds_rating_guidelines,
+            overshoot_guidance_lines=overshoot_guidance_lines,
+        )
+        if not evaluation:
             continue
-        
-        # Check current requirement with margin (compare against computed RMS/current requirement).
-        # We treat `max_current` as the user's computed RMS current requirement for selection.
-        computed_rms_current = max_current
-        id_filter_threshold_a = computed_rms_current * current_margin
-        id_filter_passed = mosfet.id >= id_filter_threshold_a
-        if not id_filter_passed:
-            continue
-        
-        # After basic VDS and ID gating, perform comparative risk-assessment checks
-        # Calculate suitability score with NEW heuristics
-        score = 100.0
-        component_heuristics = applied_heuristics.copy()
-
-        # --- SOA & Avalanche information checks (comparative risk assessment) ---
-        # Check presence of DC SOA, pulsed SOA, and avalanche energy ratings. Prefer
-        # devices that document DC SOA and avalanche capability.
-        dc_soa = getattr(mosfet, 'dc_soa', None) or getattr(mosfet, 'soa_dc', None)
-        pulsed_soa = getattr(mosfet, 'pulsed_soa', None) or getattr(mosfet, 'soa_pulsed', None)
-        avalanche_energy = (
-            getattr(mosfet, 'eas', None)
-            or getattr(mosfet, 'eav', None)
-            or getattr(mosfet, 'avalanche_energy', None)
-        )
-        repetitive_avalanche = getattr(mosfet, 'repetitive_avalanche', None) or getattr(mosfet, 'repetitive_avalanche_energy', None)
-
-        if dc_soa:
-            score += 8
-            component_heuristics.append("✅ DC SOA documented")
-        else:
-            score -= 4
-            component_heuristics.append("⚠️ No DC SOA documented")
-
-        if pulsed_soa:
-            score += 5
-            component_heuristics.append("📈 Pulsed SOA documented")
-        else:
-            # smaller penalty for missing pulsed SOA
-            score -= 1
-            component_heuristics.append("ℹ️ Pulsed SOA not documented")
-
-        if avalanche_energy:
-            score += 4
-            component_heuristics.append("🔋 Avalanche energy (EAS/EAV) documented")
-        else:
-            score -= 2
-            component_heuristics.append("⚠️ Avalanche energy not documented")
-
-        if repetitive_avalanche:
-            score += 3
-            component_heuristics.append("🔁 Repetitive avalanche rating documented")
-        else:
-            component_heuristics.append("ℹ️ No repetitive avalanche rating documented")
-
-        
-        # PRIORITY 1: VDS Headroom Assessment (grounded in vref and heuristics)
-        vds_headroom_ratio = mosfet.vds / required_vds
-        if vds_headroom_ratio >= 2.0:
-            score += 15
-            component_heuristics.append("Excellent VDS headroom")
-        elif vds_headroom_ratio >= 1.5:
-            score += 10
-            component_heuristics.append("Good VDS headroom")
-        elif vds_headroom_ratio >= 1.25:
-            score += 5
-            component_heuristics.append("Minimum acceptable VDS headroom")
-        else:
-            score -= 10
-            component_heuristics.append("Insufficient VDS headroom")
-        
-        # PRIORITY 2: RDS(on) Optimization. Prefer RDS(on) measured or derated at elevated
-        # junction temperatures when available (e.g., `rdson_at_125c`). Using an elevated
-        # temperature figure gives a better estimate of conduction losses because RDS(on)
-        # increases with temperature. If no elevated-temp value exists, fall back to the
-        # provided RDS(on) in the database.
-        rdson_used = getattr(mosfet, 'rdson_at_125c', None) or getattr(mosfet, 'rdson', None)
-        rdson_report = rdson_used
-        if rdson_used and rdson_used < 20:
-            score += 10
-            component_heuristics.append("Low RDS(on) at elevated temp")
-        elif rdson_used and rdson_used < 50:
-            score += 5
-            component_heuristics.append("Moderate RDS(on) at elevated temp")
-        elif rdson_used:
-            score -= (rdson_used - 50) / 5
-            component_heuristics.append(f"Higher RDS(on) at temperature: {rdson_used}mΩ")
-
-        # Account for high frequency penalties on RDS(on)
-        rdson_penalty = 0.0
-        if frequency_hz > 100000 and hasattr(mosfet, 'rdson') and mosfet.rdson is not None:
-            rdson_penalty = mosfet.rdson * 0.1
-            score -= rdson_penalty
-            component_heuristics.append(f"🔄 High-freq loss penalty ({rdson_penalty:.1f}pts)")
-        
-        # PRIORITY 3: Gate Voltage Protection (VGS)
-        # Check for documented VGS limits where available; include a small preference for
-        # devices that allow common gate drive voltages (e.g., 10-12V, 12-20V).
-        if hasattr(mosfet, 'vgs_max') and mosfet.vgs_max:
-            if mosfet.vgs_max >= 12:
-                score += 3
-                component_heuristics.append("Documented VGS limit supports common gate drives")
-        
-        # PRIORITY 4: dv/dt Immunity
-        # Low Qgd/Qgs ratio and low package inductance are better. Only use these
-        # parameters when they exist in the database; avoid extrapolating values.
-        gate_charge_quality = 0
-        if hasattr(mosfet, 'qgd') and hasattr(mosfet, 'qgs') and mosfet.qgs > 0:
-            qgd_qgs_ratio = mosfet.qgd / mosfet.qgs
-            if qgd_qgs_ratio < 0.5:  # Low ratio = better dv/dt immunity
-                score += 8
-                component_heuristics.append(f"Excellent dv/dt immunity (Qgd/Qgs={qgd_qgs_ratio:.2f})")
-                gate_charge_quality = 2
-            elif qgd_qgs_ratio < 0.8:
-                score += 4
-                component_heuristics.append(f"Good dv/dt immunity (Qgd/Qgs={qgd_qgs_ratio:.2f})")
-                gate_charge_quality = 1
-        
-        if hasattr(mosfet, 'package_inductance') and mosfet.package_inductance is not None:
-            if mosfet.package_inductance < 2:  # nH, lower is better
-                score += 5
-                component_heuristics.append(f"Low package inductance ({mosfet.package_inductance}nH)")
-            elif mosfet.package_inductance > 5:
-                score -= 3
-                component_heuristics.append(f"Higher package inductance ({mosfet.package_inductance}nH)")
-        
-        # PRIORITY 5: Safe Operating Area (SOA)
-        # Compute current margin relative to the required operating current. We present a
-        # conservative preference for components with moderate margin (1.5-3x) but avoid
-        # overclaiming functionality beyond the documented datasheet values.
-        current_ratio = mosfet.id / (max_current * current_margin)
-        if 1.5 <= current_ratio <= 3.0:
-            score += 5
-            component_heuristics.append(f"SOA margin: {current_ratio:.1f}x")
-        elif current_ratio > 3.0:
-            score -= (current_ratio - 3.0) * 2
-            component_heuristics.append(f"Large ID margin: {current_ratio:.1f}x (may be overdimensioned)")
-        
-        # Voltage ratio optimization relative to the derived required VDS.
-        voltage_ratio = mosfet.vds / required_vds
-        if 1.2 <= voltage_ratio <= 2.0:
-            score += 5
-            component_heuristics.append("Good VDS utilization relative to required threshold")
-        
-        # Gate charge optimization for high frequency (use when data available)
-        if hasattr(mosfet, 'qg') and mosfet.qg and frequency_hz > 50000:
-            if mosfet.qg < 30:
-                score += 8
-                component_heuristics.append("Low gate charge for high frequency")
-            elif mosfet.qg > 60:
-                score -= 5
-                component_heuristics.append("High gate charge penalty")
-        
-        # Efficiency rating bonus when documented
-        if hasattr(mosfet, 'efficiency_range') and mosfet.efficiency_range:
-            if '98%' in mosfet.efficiency_range or '97%' in mosfet.efficiency_range:
-                score += 5
-                component_heuristics.append("Documented high efficiency range")
-        
-        selection_journey = [
-            f"Passed VDS survivability filter: VDS {mosfet.vds:.0f}V >= required {required_vds:.1f}V",
-            f"Passed drain-current filter: ID {mosfet.id:.1f}A >= {id_filter_threshold_a:.1f}A (1.2 × Ioutmax)",
-        ]
-
-        if dc_soa:
-            selection_journey.append("Documented DC SOA")
-        else:
-            selection_journey.append("No DC SOA documentation")
-
-        if pulsed_soa:
-            selection_journey.append("Documented pulsed SOA")
-        else:
-            selection_journey.append("No pulsed SOA documentation")
-
-        if avalanche_energy:
-            selection_journey.append("Avalanche energy specified")
-        else:
-            selection_journey.append("Avalanche energy not specified")
-
-        if repetitive_avalanche:
-            selection_journey.append("Repetitive avalanche specified")
-
-        recommendation_parts = []
-        if vds_headroom_ratio >= 1.5:
-            recommendation_parts.append(f"strong VDS headroom ({vds_headroom_ratio:.2f}x)")
-        if rdson_used is not None and rdson_used < 20:
-            recommendation_parts.append(f"low RDS(on) of {rdson_used}mΩ")
-        elif rdson_used is not None:
-            recommendation_parts.append(f"manageable RDS(on) of {rdson_used}mΩ")
-        if 'qgd_qgs_ratio' in locals() and qgd_qgs_ratio is not None and qgd_qgs_ratio < 0.8:
-            recommendation_parts.append("favorable Qgd/Qgs ratio for dv/dt immunity")
-        if hasattr(mosfet, 'package_inductance') and mosfet.package_inductance not in (None, 0) and mosfet.package_inductance < 2:
-            recommendation_parts.append("low package inductance")
-        if not recommendation_parts:
-            recommendation_parts.append("it met the primary VDS and ID filters")
-
-        recommendation_reason = (
-            "Recommended because it passed the primary VDS and ID filters and scored well on "
-            + ", ".join(recommendation_parts) + "."
-        )
-
-        # Build a focused candidate rationale centered on VDS validity and the new filter journey
-        reason = (
-            f"Filter journey: {'; '.join(selection_journey)}. "
-            f"Final recommendation: {recommendation_reason}"
-        )
-
-        if heuristics_analysis and heuristics_analysis['selection_criteria']:
-            reason += " This selection follows the updated MOSFET heuristics document for safe VDS rating and overshoot protection."
-
-        if rdson_report:
-            reason += f" The device also meets conduction loss guidance with RDS(on)={rdson_report}mΩ."
-
-        reason += (
-            " ID and thermal margins were checked, but the primary candidate decision in this view is driven by documented VDS survivability criteria."
-        )
-        
-        selection_details = {
-            'vin_max': vin_max,
-            'vin_peak': vin_peak,
-            'vds_rating_factor': rating_factor,
-            'rating_factor_source': rating_factor_source,
-            'required_vds': required_vds,
-            'vds_headroom_ratio': vds_headroom_ratio,
-            'overshoot_guidance': overshoot_guidance_lines,
-            'heuristics_documents': heuristics_analysis.get('documents_found', []) if heuristics_analysis else [],
-            # Current filter details
-            'id_filter_threshold_a': id_filter_threshold_a,
-            'id_filter_passed': id_filter_passed,
-            'selection_journey': selection_journey,
-            'recommendation_reason': recommendation_reason,
-            # SOA / Avalanche details
-            'dc_soa_present': bool(dc_soa),
-            'pulsed_soa_present': bool(pulsed_soa),
-            'avalanche_energy_mJ': avalanche_energy,
-            'repetitive_avalanche': repetitive_avalanche,
-            # RDS(on) details
-            'rdson_used_mohm': rdson_used,
-            'rdson_actual_mohm': getattr(mosfet, 'rdson', None),
-            'rdson_at_125c_available': getattr(mosfet, 'rdson_at_125c', None) is not None and getattr(mosfet, 'rdson_at_125c', 0) > 0,
-            # dv/dt immunity details
-            'qgd_qgs_ratio': (qgd_qgs_ratio if 'qgd_qgs_ratio' in locals() else None),
-            'qgd_qgs_ratio_source': 'datasheet charge values' if 'qgd_qgs_ratio' in locals() and qgd_qgs_ratio is not None else 'not available in current component data',
-            'package_inductance_nH': getattr(mosfet, 'package_inductance', None),
-            'package_inductance_source': 'datasheet/package information' if getattr(mosfet, 'package_inductance', None) not in (None, 0) else 'not available in current component data'
-        }
 
         suggestions.append(ComponentSuggestion(
             component=mosfet,
-            reason=reason,
-            score=score,
-            heuristics_applied=component_heuristics,
-            selection_details=selection_details
+            reason=evaluation['reason'],
+            score=evaluation['score'],
+            heuristics_applied=evaluation['component_heuristics'],
+            selection_details=evaluation['selection_details']
         ))
     
     # Sort by score (highest first)

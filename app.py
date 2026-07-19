@@ -76,7 +76,7 @@ st.info(
     "🛠️ Developer change tracker\n"
     f"- Last updated: {last_updated}\n"
     f"- Git commit: {git_commit or 'Unavailable'}\n"
-    "- Implemented: MOSFET ID filter at 1.2×Ioutmax, SOA/avalanche checks, RDS(on) comparison, Qgd/Qgs and package-inductance review, plus a visible filter-journey and recommendation summary in the MOSFET reasoning UI."
+    "- Implemented: MOSFET ID filter at 1.2×Ioutmax, SOA/avalanche checks, RDS(on) comparison, Qgd/Qgs and package-inductance review, a reusable MOSFET evaluator, and visible filter-journey/recommendation details in the reasoning UI; regression tests now cover good, failing, and borderline synthetic cases."
 )
 
 from lib.llm_assistant import LLMAgent
