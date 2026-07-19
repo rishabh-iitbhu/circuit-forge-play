@@ -485,31 +485,28 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
         qgd_value_nC = details.get('qgd_value_nC')
         qgd_qgs_ratio = details.get('qgd_qgs_ratio')
         gate_drive_sensitivity_note = details.get('gate_drive_sensitivity_note')
-        if qgd_value_nC is not None and qgd_qgs_ratio is not None:
-            qgd_text = f"Qgd = {qgd_value_nC:.2f} nC and Qgd/Qgs = {qgd_qgs_ratio:.2f}; {gate_drive_sensitivity_note}"
-        elif qgd_value_nC is not None:
-            qgd_text = f"Qgd = {qgd_value_nC:.2f} nC; {gate_drive_sensitivity_note}"
-        elif qgd_qgs_ratio is not None:
-            qgd_text = f"Qgd/Qgs = {qgd_qgs_ratio:.2f}; {gate_drive_sensitivity_note}"
+        if qgd_qgs_ratio is not None:
+            lines.append(f"- **Qgd/Qgs ratio:** {qgd_qgs_ratio:.2f}.")
         else:
-            qgd_text = f"Qgd/Qgs values are not available in the current component data; {gate_drive_sensitivity_note}"
-        lines.append(f"- **Gate-drive / dv/dt logic:** {qgd_text}")
+            lines.append("- **Qgd/Qgs ratio:** not available in the current component data; it should be sourced from the datasheet values and calculations.")
+
+        if qgd_value_nC is not None:
+            lines.append(f"- **Qgd-based gate-drive logic:** Qgd = {qgd_value_nC:.2f} nC; {gate_drive_sensitivity_note}")
+        else:
+            lines.append(f"- **Qgd-based gate-drive logic:** Qgd is not available in the current component data; {gate_drive_sensitivity_note}")
+
+        package_inductance = details.get('package_inductance_nH')
+        if package_inductance not in (None, 0):
+            lines.append(f"- **Package inductance:** {package_inductance} nH. Lower package inductance is preferred because it reduces switching-node ringing and dv/dt susceptibility.")
+        else:
+            lines.append("- **Package inductance:** not available in the current component data; it should be sourced from the package/datasheet information.")
 
         gm_value = details.get('gm_value')
         gm_sensitivity_note = details.get('gm_sensitivity_note')
         if gm_value is not None:
-            gm_text = f"gm = {gm_value:.2f}; {gm_sensitivity_note}"
+            lines.append(f"- **Transconductance (gm):** {gm_value:.2f}; {gm_sensitivity_note}")
         else:
-            gm_text = f"gm is not available in the current component data; {gm_sensitivity_note}"
-        lines.append(f"- **Transconductance / gm logic:** {gm_text}")
-
-        package_inductance = details.get('package_inductance_nH')
-        if package_inductance not in (None, 0):
-            lines.append(f"- **The package inductance was found to be:** {package_inductance} nH.")
-            lines.append(f"  - Source: {details.get('package_inductance_source', 'datasheet/package information')}.")
-            lines.append("  - Lower package inductance is preferred because it reduces switching-node ringing and dv/dt susceptibility.")
-        else:
-            lines.append("- **The package inductance was not available in the current component data; it should be sourced from the package/datasheet information.**")
+            lines.append(f"- **Transconductance (gm):** not available in the current component data; {gm_sensitivity_note}")
 
         recommendation_reason = details.get('recommendation_reason')
         if recommendation_reason:
