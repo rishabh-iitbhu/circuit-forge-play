@@ -512,9 +512,9 @@ def show_mosfet_rationale(suggestion: ComponentSuggestion):
         irr_value = details.get('irr_value')
         trr_value = details.get('trr_value')
         reverse_recovery_note = details.get('reverse_recovery_note')
-        if qrr_value is not None:
+        if qrr_value is not None and qrr_value > 0:
             lines.append(f"- **Qrr / Irr / trr logic:** Qrr = {qrr_value:.2f}; {reverse_recovery_note}")
-        elif irr_value is not None and trr_value is not None:
+        elif irr_value is not None and irr_value > 0 and trr_value is not None and trr_value > 0:
             lines.append(f"- **Qrr / Irr / trr logic:** Irr = {irr_value:.2f} A and trr = {trr_value:.2f} ns; {reverse_recovery_note}")
         else:
             lines.append(f"- **Qrr / Irr / trr logic:** not available in the current component data; {reverse_recovery_note}")

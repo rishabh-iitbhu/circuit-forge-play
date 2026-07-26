@@ -2,7 +2,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from lib.component_suggestions import suggest_mosfets
+from lib.component_display import show_mosfet_rationale
+from lib.component_suggestions import suggest_mosfets, ComponentSuggestion
 
 
 class MOSFETReasoningTest(unittest.TestCase):
@@ -106,6 +107,126 @@ class MOSFETReasoningTest(unittest.TestCase):
         note = suggestions[0].selection_details['reverse_recovery_note']
         self.assertIn('90.0°C', note)
         self.assertIn('12.0 A', note)
+
+    def test_show_mosfet_rationale_includes_reverse_recovery_bullet_for_qrr(self):
+        suggestion = ComponentSuggestion(
+            component=SimpleNamespace(name='QRR_ONLY', vds=200, part_number='QRR_ONLY'),
+            reason='test',
+            selection_details={
+                'vin_max': 25,
+                'vin_peak': 31.25,
+                'vds_rating_factor': 0.6,
+                'required_vds': 52.1,
+                'vds_headroom_ratio': 3.8,
+                'id_filter_threshold_a': 12.0,
+                'id_filter_passed': True,
+                'selection_journey': ['passed'],
+                'dc_soa_present': True,
+                'pulsed_soa_present': True,
+                'avalanche_energy_mJ': 2.0,
+                'repetitive_avalanche': True,
+                'rdson_used_mohm': 6,
+                'rdson_actual_mohm': 6,
+                'qgd_value_nC': 2.0,
+                'qgd_qgs_ratio': 0.25,
+                'gate_drive_sensitivity_note': 'gate note',
+                'gm_value': 30.0,
+                'gm_sensitivity_note': 'gm note',
+                'qrr_value': 25.0,
+                'irr_value': None,
+                'trr_value': None,
+                'reverse_recovery_note': 'reverse note',
+                'package_inductance_nH': 1.0,
+                'recommendation_reason': 'recommended'
+            }
+        )
+
+        markdown_calls = []
+        button_calls = []
+        state = {'show_vds_calc_QRR_ONLY': True}
+
+        class DummyStreamlit:
+            session_state = state
+
+            def write(self, *args, **kwargs):
+                return None
+
+            def subheader(self, *args, **kwargs):
+                return None
+
+            def markdown(self, content, *args, **kwargs):
+                markdown_calls.append(content)
+
+            def button(self, *args, **kwargs):
+                button_calls.append((args, kwargs))
+                return False
+
+        with patch('lib.component_display.st', DummyStreamlit()):
+            show_mosfet_rationale(suggestion)
+
+        self.assertTrue(markdown_calls)
+        rendered = markdown_calls[0]
+        self.assertIn('Qrr / Irr / trr logic', rendered)
+        self.assertIn('Qrr = 25.00', rendered)
+
+    def test_show_mosfet_rationale_includes_reverse_recovery_bullet_for_missing_values(self):
+        suggestion = ComponentSuggestion(
+            component=SimpleNamespace(name='NO_RECOVERY', vds=200, part_number='NO_RECOVERY'),
+            reason='test',
+            selection_details={
+                'vin_max': 25,
+                'vin_peak': 31.25,
+                'vds_rating_factor': 0.6,
+                'required_vds': 52.1,
+                'vds_headroom_ratio': 3.8,
+                'id_filter_threshold_a': 12.0,
+                'id_filter_passed': True,
+                'selection_journey': ['passed'],
+                'dc_soa_present': True,
+                'pulsed_soa_present': True,
+                'avalanche_energy_mJ': 2.0,
+                'repetitive_avalanche': True,
+                'rdson_used_mohm': 6,
+                'rdson_actual_mohm': 6,
+                'qgd_value_nC': 2.0,
+                'qgd_qgs_ratio': 0.25,
+                'gate_drive_sensitivity_note': 'gate note',
+                'gm_value': 30.0,
+                'gm_sensitivity_note': 'gm note',
+                'qrr_value': None,
+                'irr_value': None,
+                'trr_value': None,
+                'reverse_recovery_note': 'reverse note',
+                'package_inductance_nH': 1.0,
+                'recommendation_reason': 'recommended'
+            }
+        )
+
+        markdown_calls = []
+        state = {'show_vds_calc_NO_RECOVERY': True}
+
+        class DummyStreamlit:
+            session_state = state
+
+            def write(self, *args, **kwargs):
+                return None
+
+            def subheader(self, *args, **kwargs):
+                return None
+
+            def markdown(self, content, *args, **kwargs):
+                markdown_calls.append(content)
+
+            def button(self, *args, **kwargs):
+                return False
+
+        with patch('lib.component_display.st', DummyStreamlit()):
+            show_mosfet_rationale(suggestion)
+
+        self.assertTrue(markdown_calls)
+        rendered = markdown_calls[0]
+        self.assertIn('Qrr / Irr / trr logic', rendered)
+        self.assertIn('not available', rendered)
 
 
 if __name__ == '__main__':
