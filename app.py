@@ -70,13 +70,33 @@ def get_git_commit() -> str | None:
             return None
 
 
+def get_latest_change_log_entry(repo_root: str | None = None) -> str:
+    """Read the newest single-line update from the implementation-status log."""
+    repo_root = repo_root or os.path.dirname(os.path.abspath(__file__))
+    log_path = os.path.join(repo_root, 'assets', 'implementation_status', 'update_log.txt')
+    try:
+        if os.path.exists(log_path):
+            with open(log_path, 'r', encoding='utf-8') as handle:
+                lines = [line.strip() for line in handle if line.strip()]
+            if lines:
+                last_line = lines[-1]
+                if ']' in last_line:
+                    return last_line.split(']', 1)[1].strip()
+                return last_line
+    except Exception:
+        pass
+    return "No change log entry recorded yet."
+
+
 git_commit = get_git_commit()
+repo_root = os.path.dirname(os.path.abspath(__file__))
 last_updated = datetime.now().strftime("%Y-%m-%d %H:%M")
+latest_change = get_latest_change_log_entry(repo_root)
 st.info(
     "🛠️ Developer change tracker\n"
     f"- Last updated: {last_updated}\n"
     f"- Git commit: {git_commit or 'Unavailable'}\n"
-    "- Implemented: MOSFET ID filter at 1.2×Ioutmax, SOA/avalanche checks, RDS(on) comparison, Qgd/Qgs and package-inductance review, plus a visible filter-journey and recommendation summary in the MOSFET reasoning UI."
+    f"- Latest update: {latest_change}"
 )
 
 from lib.llm_assistant import LLMAgent
