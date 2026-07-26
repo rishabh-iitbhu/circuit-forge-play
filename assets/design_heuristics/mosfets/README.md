@@ -45,10 +45,11 @@ The recommendation logic now evaluates MOSFETs using the following criteria:
 
 9. **Reverse-recovery behavior**
    - Use Qrr when available as the primary indicator of body-diode recovery stress.
-   - If Qrr is not present, use Irr and trr information.
+   - If Qrr is not present, use Irr and trr information and compute the recovery product.
+   - This is especially important for synchronous buck converters at high dV/dt because hard body-diode recovery increases switching loss and EMI.
    - Lower recovery charge/current/time is preferred because it reduces ringing, loss, and EMI.
-   - Higher temperature and higher commutation current typically increase recovery stress.
-   - Slowing the rise of the opposite gate-drive pulse can help reduce reverse-recovery current.
+   - The heuristic should flag that Qrr typically rises at elevated operating temperature and at higher forward current, which is effectively the inductor current carried by the diode just before the transition.
+   - Slowing the rise of the opposite gate-drive pulse can help reduce reverse-recovery current, so this should be presented as a comparative risk-mitigation note during selection.
 
 ## Notes for Documentation Authors
 

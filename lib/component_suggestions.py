@@ -3,7 +3,7 @@ Component suggestion logic for recommending MOSFETs, capacitors, and inductors
 Now incorporates design heuristics from documents
 """
 
-from typing import List, Dict, Tuple, Any
+from typing import List, Dict, Tuple, Any, Optional
 from dataclasses import dataclass
 from lib.component_data import (
     MOSFET, Capacitor, Inductor, InputCapacitor,
@@ -26,7 +26,14 @@ class ComponentSuggestion:
             self.selection_details = {}
 
 
-def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float = 65000, use_web_search: bool = False) -> List[ComponentSuggestion]:
+def suggest_mosfets(
+    max_voltage: float,
+    max_current: float,
+    frequency_hz: float = 65000,
+    use_web_search: bool = False,
+    operating_temperature_c: float = 25.0,
+    diode_forward_current_a: Optional[float] = None,
+) -> List[ComponentSuggestion]:
     """
     Suggest MOSFETs based on voltage and current requirements
     Now incorporates design heuristics from documents
@@ -345,26 +352,47 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
         elif irr_value is not None and trr_value is not None and irr_value > 0 and trr_value > 0:
             recovery_product = float(irr_value * trr_value)
 
-        if recovery_product is not None:
-            if recovery_product < 50:
+        recovery_temperature_c = float(operating_temperature_c if operating_temperature_c is not None else 25.0)
+        if recovery_temperature_c < 25.0:
+            recovery_temperature_c = 25.0
+
+        recovery_forward_current_a = float(diode_forward_current_a) if diode_forward_current_a is not None else float(max_current)
+        if recovery_forward_current_a <= 0.0:
+            recovery_forward_current_a = float(max_current)
+
+        temp_rise_c = max(0.0, recovery_temperature_c - 25.0)
+        current_ratio = recovery_forward_current_a / max(max_current, 1.0)
+        stress_multiplier = 1.0
+        if temp_rise_c > 0.0:
+            stress_multiplier += (temp_rise_c / 100.0) * 0.6
+        if current_ratio > 0.5:
+            stress_multiplier += max(0.0, current_ratio - 0.5) * 0.4
+
+        effective_recovery_stress = recovery_product * stress_multiplier if recovery_product is not None else None
+        reverse_recovery_risk_level = 'unknown'
+        if effective_recovery_stress is not None:
+            if effective_recovery_stress < 50:
                 score += 4
-                component_heuristics.append(f"Low reverse-recovery stress ({recovery_product:.1f})")
-            elif recovery_product < 150:
+                component_heuristics.append(f"Low reverse-recovery stress ({effective_recovery_stress:.1f} effective at {recovery_temperature_c:.1f}°C / {recovery_forward_current_a:.1f} A)")
+                reverse_recovery_risk_level = 'low'
+            elif effective_recovery_stress < 150:
                 score += 2
-                component_heuristics.append(f"Moderate reverse-recovery stress ({recovery_product:.1f})")
+                component_heuristics.append(f"Moderate reverse-recovery stress ({effective_recovery_stress:.1f} effective at {recovery_temperature_c:.1f}°C / {recovery_forward_current_a:.1f} A)")
+                reverse_recovery_risk_level = 'moderate'
             else:
                 score -= 3
-                component_heuristics.append(f"High reverse-recovery stress ({recovery_product:.1f})")
+                component_heuristics.append(f"High reverse-recovery stress ({effective_recovery_stress:.1f} effective at {recovery_temperature_c:.1f}°C / {recovery_forward_current_a:.1f} A)")
+                reverse_recovery_risk_level = 'high'
         else:
             component_heuristics.append("Reverse-recovery data not available")
 
         if qrr_value is not None and qrr_value > 0:
             reverse_recovery_note = (
-                f"Qrr = {qrr_value:.2f}; lower Qrr reduces body-diode recovery loss and EMI, but higher temperature and higher forward current during commutation increase Qrr, so this should be checked at the operating point. Slowing the rise of the opposite gate-drive pulse can reduce reverse-recovery current."
+                f"Qrr = {qrr_value:.2f}; lower Qrr reduces body-diode recovery loss and EMI, but at {recovery_temperature_c:.1f}°C and {recovery_forward_current_a:.1f} A the recovery stress is higher because Qrr rises with temperature and forward current. Slowing the rise of the opposite gate-drive pulse can reduce reverse-recovery current."
             )
         elif irr_value is not None and trr_value is not None and irr_value > 0 and trr_value > 0:
             reverse_recovery_note = (
-                f"Irr = {irr_value:.2f} A and trr = {trr_value:.2f} ns (Irr × trr ≈ {recovery_product:.2f}); lower recovery current/time reduces ringing and loss, while higher junction temperature and forward current increase recovery stress. Slowing the rise of the opposite gate-drive pulse can reduce reverse-recovery current."
+                f"Irr = {irr_value:.2f} A and trr = {trr_value:.2f} ns (Irr × trr ≈ {recovery_product:.2f}); lower recovery current/time reduces ringing and loss, while at {recovery_temperature_c:.1f}°C and {recovery_forward_current_a:.1f} A the recovery stress rises because higher junction temperature and forward current increase recovery stress. Slowing the rise of the opposite gate-drive pulse can reduce reverse-recovery current."
             )
         else:
             reverse_recovery_note = (
@@ -507,6 +535,11 @@ def suggest_mosfets(max_voltage: float, max_current: float, frequency_hz: float 
             'irr_value': irr_value,
             'trr_value': trr_value,
             'recovery_product': recovery_product,
+            'effective_recovery_stress': effective_recovery_stress,
+            'reverse_recovery_temperature_c': recovery_temperature_c,
+            'reverse_recovery_forward_current_a': recovery_forward_current_a,
+            'reverse_recovery_stress_multiplier': stress_multiplier,
+            'reverse_recovery_risk_level': reverse_recovery_risk_level,
             'reverse_recovery_note': reverse_recovery_note,
             'package_inductance_nH': getattr(mosfet, 'package_inductance', None),
             'package_inductance_source': 'datasheet/package information' if getattr(mosfet, 'package_inductance', None) not in (None, 0) else 'not available in current component data'
