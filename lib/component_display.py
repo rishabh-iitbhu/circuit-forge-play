@@ -414,119 +414,129 @@ def show_detailed_rationale(suggestion: ComponentSuggestion, component_type: str
         show_inductor_rationale(suggestion)
 
 
-def show_mosfet_rationale(suggestion: ComponentSuggestion):
-    """Show MOSFET candidate validity and VDS reasoning"""
+def _build_mosfet_rationale_lines(suggestion: ComponentSuggestion) -> List[str]:
+    """Build the MOSFET rationale lines for display."""
     comp = suggestion.component
     details = suggestion.selection_details or {}
-    
-    st.write("**MOSFET Selection Logic**")
 
-    part_key = getattr(comp, 'part_number', getattr(comp, 'name', 'MOSFET')).replace(' ', '_').replace('/', '_')
-    vds_toggle_key = f"show_vds_calc_{part_key}"
+    lines = []
+    lines.append("**Voltage survivability**")
+    lines.append(f"- **Vin max:** {details.get('vin_max', 'N/A')} V")
+    if details.get('vin_peak'):
+        lines.append(f"- **Estimated Vpeak (Vin + 25% overshoot):** {details['vin_peak']:.1f} V")
+        lines.append("  - This 25% overshoot is a reasonable conservative estimate.")
+        lines.append("  - Calculate Vpeak = Vin + Vovershoot.")
+    if details.get('vds_rating_factor'):
+        lines.append(f"- **VDS rating factor:** {details['vds_rating_factor']:.2f} ({details.get('rating_factor_source', 'standard')})")
+        if details['vds_rating_factor'] == 0.6:
+            lines.append("  - 0.6 is a standard conservative VDS rating factor for silicon MOSFETs.")
+    if details.get('required_vds'):
+        lines.append(f"- **Required VDS rating:** {details['required_vds']:.1f} V")
+    lines.append(f"- **Actual MOSFET VDS:** {getattr(comp, 'vds', 'N/A')} V")
+    if details.get('vds_headroom_ratio'):
+        lines.append(f"- **VDS headroom ratio:** {details['vds_headroom_ratio']:.2f}x")
+    if details.get('overshoot_guidance'):
+        lines.append("\n**Heuristic VDS overshoot guidance**")
+        for guidance in details['overshoot_guidance'][:3]:
+            lines.append(f"- {guidance}")
 
-    if not st.session_state.get(vds_toggle_key, False):
-        if st.button("Show MOSFET selection logic", key=vds_toggle_key):
-            st.session_state[vds_toggle_key] = True
+    lines.append("\n**Filter journey**")
+    lines.append(f"- **Drain-current filter:** ID >= {details.get('id_filter_threshold_a', 'N/A')} A (1.2 × Ioutmax)")
+    lines.append(f"- **Current filter passed:** {'Yes' if details.get('id_filter_passed') else 'No'}")
+    journey_items = details.get('selection_journey', [])
+    if isinstance(journey_items, list):
+        for item in journey_items:
+            lines.append(f"- {item}")
+    elif journey_items:
+        lines.append(f"- {journey_items}")
+
+    lines.append("\n**Comparative risk assessment**")
+    dc_soa = details.get('dc_soa_present')
+    if dc_soa is not None:
+        lines.append(f"- **DC SOA documented:** {'Yes' if dc_soa else 'No'}")
+    pulsed_soa = details.get('pulsed_soa_present')
+    if pulsed_soa is not None:
+        lines.append(f"- **Pulsed SOA documented:** {'Yes' if pulsed_soa else 'No'}")
+    avalanche_energy = details.get('avalanche_energy_mJ')
+    if avalanche_energy is not None:
+        lines.append(f"- **Avalanche energy specified:** {'Yes' if avalanche_energy else 'No'}")
+    repetitive_avalanche = details.get('repetitive_avalanche')
+    if repetitive_avalanche is not None:
+        lines.append(f"- **Repetitive avalanche specified:** {'Yes' if repetitive_avalanche else 'No'}")
+
+    rdson_used = details.get('rdson_used_mohm')
+    rdson_actual = details.get('rdson_actual_mohm')
+    if rdson_used is not None:
+        lines.append(f"- **RDS(on) value used for comparison (100-125°C basis):** {rdson_used} mΩ")
+        if rdson_actual is not None:
+            lines.append(f"- **Actual listed RDS(on):** {rdson_actual} mΩ")
+        lines.append("  - Lower RDS(on) is preferred because it reduces conduction loss and thermal stress.")
+
+    qgd_value_nC = details.get('qgd_value_nC')
+    qgd_qgs_ratio = details.get('qgd_qgs_ratio')
+    gate_drive_sensitivity_note = details.get('gate_drive_sensitivity_note')
+    if qgd_qgs_ratio is not None:
+        lines.append(f"- **Qgd/Qgs ratio:** {qgd_qgs_ratio:.2f}.")
     else:
-        st.subheader("MOSFET Selection Logic and Reasoning")
-        lines = []
-        lines.append("**Voltage survivability**")
-        lines.append(f"- **Vin max:** {details.get('vin_max', 'N/A')} V")
-        if details.get('vin_peak'):
-            lines.append(f"- **Estimated Vpeak (Vin + 25% overshoot):** {details['vin_peak']:.1f} V")
-            lines.append("  - This 25% overshoot is a reasonable conservative estimate.")
-            lines.append("  - Calculate Vpeak = Vin + Vovershoot.")
-        if details.get('vds_rating_factor'):
-            lines.append(f"- **VDS rating factor:** {details['vds_rating_factor']:.2f} ({details.get('rating_factor_source', 'standard')})")
-            if details['vds_rating_factor'] == 0.6:
-                lines.append("  - 0.6 is a standard conservative VDS rating factor for silicon MOSFETs.")
-        if details.get('required_vds'):
-            lines.append(f"- **Required VDS rating:** {details['required_vds']:.1f} V")
-        lines.append(f"- **Actual MOSFET VDS:** {getattr(comp, 'vds', 'N/A')} V")
-        if details.get('vds_headroom_ratio'):
-            lines.append(f"- **VDS headroom ratio:** {details['vds_headroom_ratio']:.2f}x")
-        if details.get('overshoot_guidance'):
-            lines.append("\n**Heuristic VDS overshoot guidance**")
-            for guidance in details['overshoot_guidance'][:3]:
-                lines.append(f"- {guidance}")
+        lines.append("- **Qgd/Qgs ratio:** not available in the current component data; it should be sourced from the datasheet values and calculations.")
 
-        lines.append("\n**Filter journey**")
-        lines.append(f"- **Drain-current filter:** ID >= {details.get('id_filter_threshold_a', 'N/A')} A (1.2 × Ioutmax)")
-        lines.append(f"- **Current filter passed:** {'Yes' if details.get('id_filter_passed') else 'No'}")
-        journey_items = details.get('selection_journey', [])
-        if isinstance(journey_items, list):
-            for item in journey_items:
-                lines.append(f"- {item}")
-        elif journey_items:
-            lines.append(f"- {journey_items}")
+    if qgd_value_nC is not None:
+        lines.append(f"- **Qgd-based gate-drive logic:** Qgd = {qgd_value_nC:.2f} nC; {gate_drive_sensitivity_note}")
+    else:
+        lines.append(f"- **Qgd-based gate-drive logic:** Qgd is not available in the current component data; {gate_drive_sensitivity_note}")
 
-        lines.append("\n**Comparative risk assessment**")
-        dc_soa = details.get('dc_soa_present')
-        if dc_soa is not None:
-            lines.append(f"- **DC SOA documented:** {'Yes' if dc_soa else 'No'}")
-        pulsed_soa = details.get('pulsed_soa_present')
-        if pulsed_soa is not None:
-            lines.append(f"- **Pulsed SOA documented:** {'Yes' if pulsed_soa else 'No'}")
-        avalanche_energy = details.get('avalanche_energy_mJ')
-        if avalanche_energy is not None:
-            lines.append(f"- **Avalanche energy specified:** {'Yes' if avalanche_energy else 'No'}")
-        repetitive_avalanche = details.get('repetitive_avalanche')
-        if repetitive_avalanche is not None:
-            lines.append(f"- **Repetitive avalanche specified:** {'Yes' if repetitive_avalanche else 'No'}")
+    drain_short_level = details.get('drain_source_short_risk_level')
+    drain_short_note = details.get('drain_source_short_risk_note')
+    if drain_short_level is not None:
+        lines.append(f"- **Drain-source short-failure risk:** {drain_short_level} — {drain_short_note}")
+    else:
+        lines.append("- **Drain-source short-failure risk:** not assessed for this candidate")
 
-        rdson_used = details.get('rdson_used_mohm')
-        rdson_actual = details.get('rdson_actual_mohm')
-        if rdson_used is not None:
-            lines.append(f"- **RDS(on) value used for comparison (100-125°C basis):** {rdson_used} mΩ")
-            if rdson_actual is not None:
-                lines.append(f"- **Actual listed RDS(on):** {rdson_actual} mΩ")
-            lines.append("  - Lower RDS(on) is preferred because it reduces conduction loss and thermal stress.")
+    package_inductance = details.get('package_inductance_nH')
+    if package_inductance not in (None, 0):
+        lines.append(f"- **Package inductance:** {package_inductance} nH. Lower package inductance is preferred because it reduces switching-node ringing and dv/dt susceptibility.")
+    else:
+        lines.append("- **Package inductance:** not available in the current component data; it should be sourced from the package/datasheet information.")
 
-        qgd_value_nC = details.get('qgd_value_nC')
-        qgd_qgs_ratio = details.get('qgd_qgs_ratio')
-        gate_drive_sensitivity_note = details.get('gate_drive_sensitivity_note')
-        if qgd_qgs_ratio is not None:
-            lines.append(f"- **Qgd/Qgs ratio:** {qgd_qgs_ratio:.2f}.")
-        else:
-            lines.append("- **Qgd/Qgs ratio:** not available in the current component data; it should be sourced from the datasheet values and calculations.")
+    gm_value = details.get('gm_value')
+    gm_sensitivity_note = details.get('gm_sensitivity_note')
+    if gm_value is not None:
+        lines.append(f"- **Transconductance (gm):** {gm_value:.2f}; {gm_sensitivity_note}")
+    else:
+        lines.append(f"- **Transconductance (gm):** not available in the current component data; {gm_sensitivity_note}")
 
-        if qgd_value_nC is not None:
-            lines.append(f"- **Qgd-based gate-drive logic:** Qgd = {qgd_value_nC:.2f} nC; {gate_drive_sensitivity_note}")
-        else:
-            lines.append(f"- **Qgd-based gate-drive logic:** Qgd is not available in the current component data; {gate_drive_sensitivity_note}")
+    qrr_value = details.get('qrr_value')
+    irr_value = details.get('irr_value')
+    trr_value = details.get('trr_value')
+    reverse_recovery_note = details.get('reverse_recovery_note')
+    if qrr_value is not None and qrr_value > 0:
+        lines.append(f"- **Qrr / Irr / trr logic:** Qrr = {qrr_value:.2f}; {reverse_recovery_note}")
+    elif irr_value is not None and irr_value > 0 and trr_value is not None and trr_value > 0:
+        lines.append(f"- **Qrr / Irr / trr logic:** Irr = {irr_value:.2f} A and trr = {trr_value:.2f} ns; {reverse_recovery_note}")
+    else:
+        lines.append(f"- **Qrr / Irr / trr logic:** not available in the current component data; {reverse_recovery_note}")
 
-        package_inductance = details.get('package_inductance_nH')
-        if package_inductance not in (None, 0):
-            lines.append(f"- **Package inductance:** {package_inductance} nH. Lower package inductance is preferred because it reduces switching-node ringing and dv/dt susceptibility.")
-        else:
-            lines.append("- **Package inductance:** not available in the current component data; it should be sourced from the package/datasheet information.")
+    recommendation_reason = details.get('recommendation_reason')
+    if recommendation_reason:
+        lines.append("\n**Why this was recommended**")
+        lines.append(f"- {recommendation_reason}")
 
-        gm_value = details.get('gm_value')
-        gm_sensitivity_note = details.get('gm_sensitivity_note')
-        if gm_value is not None:
-            lines.append(f"- **Transconductance (gm):** {gm_value:.2f}; {gm_sensitivity_note}")
-        else:
-            lines.append(f"- **Transconductance (gm):** not available in the current component data; {gm_sensitivity_note}")
+    return lines
 
-        qrr_value = details.get('qrr_value')
-        irr_value = details.get('irr_value')
-        trr_value = details.get('trr_value')
-        reverse_recovery_note = details.get('reverse_recovery_note')
-        if qrr_value is not None and qrr_value > 0:
-            lines.append(f"- **Qrr / Irr / trr logic:** Qrr = {qrr_value:.2f}; {reverse_recovery_note}")
-        elif irr_value is not None and irr_value > 0 and trr_value is not None and trr_value > 0:
-            lines.append(f"- **Qrr / Irr / trr logic:** Irr = {irr_value:.2f} A and trr = {trr_value:.2f} ns; {reverse_recovery_note}")
-        else:
-            lines.append(f"- **Qrr / Irr / trr logic:** not available in the current component data; {reverse_recovery_note}")
 
-        recommendation_reason = details.get('recommendation_reason')
-        if recommendation_reason:
-            lines.append("\n**Why this was recommended**")
-            lines.append(f"- {recommendation_reason}")
+def show_mosfet_rationale(suggestion: ComponentSuggestion):
+    """Show MOSFET candidate validity and VDS reasoning inline."""
+    comp = suggestion.component
+    details = suggestion.selection_details or {}
 
+    st.write("**MOSFET Selection Logic**")
+    lines = _build_mosfet_rationale_lines(suggestion)
+
+    if hasattr(st, 'expander'):
+        with st.expander("MOSFET selection logic and reasoning", expanded=True):
+            st.markdown("\n".join(lines))
+    else:
         st.markdown("\n".join(lines))
-        if st.button("Hide MOSFET selection logic", key=f"hide_{vds_toggle_key}"):
-            st.session_state[vds_toggle_key] = False
 
 
 def show_capacitor_rationale(suggestion: ComponentSuggestion, component_type: str):

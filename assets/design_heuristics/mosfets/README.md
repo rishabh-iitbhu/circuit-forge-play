@@ -51,6 +51,12 @@ The recommendation logic now evaluates MOSFETs using the following criteria:
    - The heuristic should flag that Qrr typically rises at elevated operating temperature and at higher forward current, which is effectively the inductor current carried by the diode just before the transition.
    - Slowing the rise of the opposite gate-drive pulse can help reduce reverse-recovery current, so this should be presented as a comparative risk-mitigation note during selection.
 
+10. **Drain-source short-failure risk assessment**
+   - Treat drain-source short failure as a thermal-overstress risk factor rather than a simple current-rating check.
+   - Prefer parts with healthy current margin relative to the operating current, low RDS(on) at the relevant temperature, documented DC SOA and pulsed SOA, and avalanche-energy information when available.
+   - Parts with weak current margin, higher RDS(on), missing SOA information, or high package inductance are assigned a higher drain-source short-failure risk level.
+   - This assessment should appear in the selection reasoning and be used as a comparative penalty when ranking candidate MOSFETs.
+
 ## Notes for Documentation Authors
 
 - If a value is missing from the component database, the reasoning should say so explicitly rather than silently omitting the check.

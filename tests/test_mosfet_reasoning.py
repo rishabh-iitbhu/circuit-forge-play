@@ -108,6 +108,75 @@ class MOSFETReasoningTest(unittest.TestCase):
         self.assertIn('90.0°C', note)
         self.assertIn('12.0 A', note)
 
+    def test_show_mosfet_rationale_is_visible_without_clicking_toggle(self):
+        suggestion = ComponentSuggestion(
+            component=SimpleNamespace(name='AUTO_VISIBLE', vds=200, part_number='AUTO_VISIBLE'),
+            reason='test',
+            selection_details={
+                'vin_max': 25,
+                'vin_peak': 31.25,
+                'vds_rating_factor': 0.6,
+                'required_vds': 52.1,
+                'vds_headroom_ratio': 3.8,
+                'id_filter_threshold_a': 12.0,
+                'id_filter_passed': True,
+                'selection_journey': ['passed'],
+                'dc_soa_present': True,
+                'pulsed_soa_present': True,
+                'avalanche_energy_mJ': 2.0,
+                'repetitive_avalanche': True,
+                'rdson_used_mohm': 6,
+                'rdson_actual_mohm': 6,
+                'qgd_value_nC': 2.0,
+                'qgd_qgs_ratio': 0.25,
+                'gate_drive_sensitivity_note': 'gate note',
+                'gm_value': 30.0,
+                'gm_sensitivity_note': 'gm note',
+                'qrr_value': None,
+                'irr_value': None,
+                'trr_value': None,
+                'reverse_recovery_note': 'reverse note',
+                'drain_source_short_risk_level': 'low',
+                'drain_source_short_risk_note': 'Thermal overstress is the dominant failure mechanism.',
+                'package_inductance_nH': 1.0,
+                'recommendation_reason': 'recommended'
+            }
+        )
+
+        markdown_calls = []
+
+        class DummyStreamlit:
+            session_state = {}
+
+            def write(self, *args, **kwargs):
+                return None
+
+            def subheader(self, *args, **kwargs):
+                return None
+
+            def markdown(self, content, *args, **kwargs):
+                markdown_calls.append(content)
+
+            def button(self, *args, **kwargs):
+                return False
+
+            def expander(self, *args, **kwargs):
+                class DummyExpander:
+                    def __enter__(self):
+                        return self
+
+                    def __exit__(self, exc_type, exc, tb):
+                        return False
+
+                return DummyExpander()
+
+        with patch('lib.component_display.st', DummyStreamlit()):
+            show_mosfet_rationale(suggestion)
+
+        self.assertTrue(markdown_calls)
+        rendered = markdown_calls[0]
+        self.assertIn('Drain-source short-failure risk', rendered)
+
     def test_show_mosfet_rationale_includes_reverse_recovery_bullet_for_qrr(self):
         suggestion = ComponentSuggestion(
             component=SimpleNamespace(name='QRR_ONLY', vds=200, part_number='QRR_ONLY'),
@@ -227,6 +296,99 @@ class MOSFETReasoningTest(unittest.TestCase):
         rendered = markdown_calls[0]
         self.assertIn('Qrr / Irr / trr logic', rendered)
         self.assertIn('not available', rendered)
+
+    def test_drain_source_short_failure_risk_is_exposed_for_existing_components(self):
+        suggestions = suggest_mosfets(25, 10)
+        self.assertTrue(suggestions)
+
+        details = suggestions[0].selection_details
+        self.assertIn('drain_source_short_risk_level', details)
+        self.assertIn('drain_source_short_risk_score', details)
+        self.assertIn('drain_source_short_risk_note', details)
+
+    def test_show_mosfet_rationale_includes_drain_source_short_failure_bullet(self):
+        suggestion = ComponentSuggestion(
+            component=SimpleNamespace(name='SHORT_RISK', vds=200, part_number='SHORT_RISK'),
+            reason='test',
+            selection_details={
+                'vin_max': 25,
+                'vin_peak': 31.25,
+                'vds_rating_factor': 0.6,
+                'required_vds': 52.1,
+                'vds_headroom_ratio': 3.8,
+                'id_filter_threshold_a': 12.0,
+                'id_filter_passed': True,
+                'selection_journey': ['passed'],
+                'dc_soa_present': True,
+                'pulsed_soa_present': True,
+                'avalanche_energy_mJ': 2.0,
+                'repetitive_avalanche': True,
+                'rdson_used_mohm': 6,
+                'rdson_actual_mohm': 6,
+                'qgd_value_nC': 2.0,
+                'qgd_qgs_ratio': 0.25,
+                'gate_drive_sensitivity_note': 'gate note',
+                'gm_value': 30.0,
+                'gm_sensitivity_note': 'gm note',
+                'qrr_value': None,
+                'irr_value': None,
+                'trr_value': None,
+                'reverse_recovery_note': 'reverse note',
+                'drain_source_short_risk_level': 'high',
+                'drain_source_short_risk_note': 'Thermal overstress is the dominant failure mechanism.',
+                'package_inductance_nH': 1.0,
+                'recommendation_reason': 'recommended'
+            }
+        )
+
+        markdown_calls = []
+        state = {'show_vds_calc_SHORT_RISK': True}
+
+        class DummyStreamlit:
+            session_state = state
+
+            def write(self, *args, **kwargs):
+                return None
+
+            def subheader(self, *args, **kwargs):
+                return None
+
+            def markdown(self, content, *args, **kwargs):
+                markdown_calls.append(content)
+
+            def button(self, *args, **kwargs):
+                return False
+
+        with patch('lib.component_display.st', DummyStreamlit()):
+            show_mosfet_rationale(suggestion)
+
+        self.assertTrue(markdown_calls)
+        rendered = markdown_calls[0]
+        self.assertIn('Drain-source short-failure risk', rendered)
+        self.assertIn('high', rendered)
+
+    def test_drain_source_short_failure_risk_penalizes_high_stress_hypothetical_parts(self):
+        low_risk = SimpleNamespace(
+            name='LOW_RISK', manufacturer='Test', vds=200, id=40, rdson=6, qg=18,
+            package='LFPAK56', qgd=2, qgs=8, package_inductance=1, dc_soa=True,
+            pulsed_soa=True, eas=2.5, repetitive_avalanche=True, rdson_at_125c=6,
+            mosfet_type='Si', gm=50.0
+        )
+        high_risk = SimpleNamespace(
+            name='HIGH_RISK', manufacturer='Test', vds=200, id=12, rdson=80, qg=40,
+            package='TO-220', qgd=8, qgs=6, package_inductance=8, dc_soa=False,
+            pulsed_soa=False, eas=None, repetitive_avalanche=False, rdson_at_125c=90,
+            mosfet_type='Si', gm=20.0
+        )
+
+        with patch('lib.component_suggestions.MOSFET_LIBRARY', [low_risk, high_risk]):
+            suggestions = suggest_mosfets(25, 10)
+
+        self.assertEqual(len(suggestions), 2)
+        self.assertEqual(suggestions[0].component.name, 'LOW_RISK')
+        self.assertGreater(suggestions[0].score, suggestions[1].score)
+        self.assertIn('drain-source short-failure', suggestions[0].selection_details['drain_source_short_risk_note'].lower())
+        self.assertIn('high', suggestions[1].selection_details['drain_source_short_risk_level'].lower())
 
 
 if __name__ == '__main__':

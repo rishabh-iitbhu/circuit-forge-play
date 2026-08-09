@@ -406,12 +406,73 @@ def suggest_mosfets(
             elif mosfet.package_inductance > 5:
                 score -= 3
                 component_heuristics.append(f"Higher package inductance ({mosfet.package_inductance}nH)")
+
+        # PRIORITY 5: Drain-source short-failure risk assessment
+        # Thermal overstress is the dominant mechanism here. Prefer parts with strong
+        # current margin, low RDS(on), and documented SOA/avalanche behavior.
+        current_ratio = mosfet.id / (max_current * current_margin)
+        short_failure_risk_score = 0.0
+        short_failure_risk_reasons = []
+
+        if current_ratio < 1.2:
+            short_failure_risk_score += 6
+            short_failure_risk_reasons.append("insufficient current margin")
+        elif current_ratio < 1.5:
+            short_failure_risk_score += 3
+            short_failure_risk_reasons.append("marginal current margin")
+        else:
+            short_failure_risk_reasons.append("healthy current margin")
+
+        if rdson_used is None:
+            short_failure_risk_score += 2
+            short_failure_risk_reasons.append("RDS(on) at temperature not available")
+        elif rdson_used > 50:
+            short_failure_risk_score += 4
+            short_failure_risk_reasons.append("high RDS(on) increases conduction heating")
+        elif rdson_used > 20:
+            short_failure_risk_score += 2
+            short_failure_risk_reasons.append("moderate RDS(on) increases heating")
+        else:
+            short_failure_risk_reasons.append("low RDS(on) reduces heating")
+
+        if not dc_soa:
+            short_failure_risk_score += 3
+            short_failure_risk_reasons.append("no DC SOA documentation")
+
+        if not pulsed_soa:
+            short_failure_risk_score += 2
+            short_failure_risk_reasons.append("no pulsed SOA documentation")
+
+        if not avalanche_energy:
+            short_failure_risk_score += 1
+            short_failure_risk_reasons.append("no avalanche-energy documentation")
+
+        if hasattr(mosfet, 'package_inductance') and mosfet.package_inductance not in (None, 0) and mosfet.package_inductance > 5:
+            short_failure_risk_score += 1
+            short_failure_risk_reasons.append("high package inductance increases switching stress")
+
+        if short_failure_risk_score >= 10:
+            risk_level = 'high'
+            score -= 8
+            component_heuristics.append("⚠️ High drain-source short-failure risk from thermal overstress")
+        elif short_failure_risk_score >= 5:
+            risk_level = 'moderate'
+            score -= 3
+            component_heuristics.append("⚠️ Moderate drain-source short-failure risk from thermal overstress")
+        else:
+            risk_level = 'low'
+            score += 2
+            component_heuristics.append("✅ Low drain-source short-failure risk from thermal overstress")
+
+        short_failure_risk_note = (
+            f"Drain-source short-failure risk is {risk_level}: {', '.join(short_failure_risk_reasons)}. "
+            "Thermal overstress is the dominant failure mechanism, so adequate current margin, a lower RDS(on), and documented SOA/avalanche behavior reduce the risk."
+        )
         
-        # PRIORITY 5: Safe Operating Area (SOA)
+        # PRIORITY 6: Safe Operating Area (SOA)
         # Compute current margin relative to the required operating current. We present a
         # conservative preference for components with moderate margin (1.5-3x) but avoid
         # overclaiming functionality beyond the documented datasheet values.
-        current_ratio = mosfet.id / (max_current * current_margin)
         if 1.5 <= current_ratio <= 3.0:
             score += 5
             component_heuristics.append(f"SOA margin: {current_ratio:.1f}x")
@@ -490,6 +551,7 @@ def suggest_mosfets(
         reason += f" {gate_drive_sensitivity_note}"
         reason += f" {gm_sensitivity_note}"
         reason += f" {reverse_recovery_note}"
+        reason += f" {short_failure_risk_note}"
 
         if heuristics_analysis and heuristics_analysis['selection_criteria']:
             reason += " This selection follows the updated MOSFET heuristics document for safe VDS rating and overshoot protection."
@@ -541,6 +603,9 @@ def suggest_mosfets(
             'reverse_recovery_stress_multiplier': stress_multiplier,
             'reverse_recovery_risk_level': reverse_recovery_risk_level,
             'reverse_recovery_note': reverse_recovery_note,
+            'drain_source_short_risk_level': risk_level,
+            'drain_source_short_risk_score': short_failure_risk_score,
+            'drain_source_short_risk_note': short_failure_risk_note,
             'package_inductance_nH': getattr(mosfet, 'package_inductance', None),
             'package_inductance_source': 'datasheet/package information' if getattr(mosfet, 'package_inductance', None) not in (None, 0) else 'not available in current component data'
         }
